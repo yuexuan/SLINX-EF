@@ -10,7 +10,7 @@ Everflame 的独立单 VPS 节点组件。基于 [slinxlink/node](https://github
 bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/install.sh)
 ```
 
-指定版本：在上述命令末尾加 `v0.1.0-ef.3`。重复执行即更新；面板内置更新同样只读取此 Fork，启动独立 systemd 临时单元执行 Release 内经 SHA256 验证的安装脚本。
+指定版本：在上述命令末尾加 `v0.0.1`。重复执行即更新；面板内置更新同样只读取此 Fork，启动独立 systemd 临时单元执行 Release 内经 SHA256 验证的安装脚本。
 
 保留 `/etc/slinx`、`slinx.service` 和 `slinx` 管理命令。安装后执行 `slinx` 查看面板端口、路径及账号信息，建议首次通过 SSH 隧道访问。脚本不会修改系统时区或其他 sing-box 服务。发现未标记的已有 SLINX 安装会退出，需人工检查后迁移。
 
@@ -22,7 +22,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/instal
 
 ## 发布与来源核对
 
-手动触发 Release 工作流只生成构建 Artifact；推送 `v*-ef.*` 标签才发布。复用 Dockerfile.builder 和 Makefile 的 CGO 交叉编译及前端嵌入方式。两种架构全部构建成功后先创建草稿并上传资源，再公开 Release。资源包括两个面板二进制、SHA256SUMS、BUILDINFO、install.sh。
+手动触发 Release 工作流只生成构建 Artifact；推送 `vX.Y.Z` 标签才发布。复用 Dockerfile.builder 和 Makefile 的 CGO 交叉编译及前端嵌入方式。两种架构全部构建成功后先创建草稿并上传资源，再公开 Release。资源包括两个面板二进制、SHA256SUMS、BUILDINFO、install.sh。
 
 `slinx version`（二进制 `/etc/slinx/slinx version`）输出版本及源码提交；可与 BUILDINFO、标签提交及 Actions 记录核对。
 
