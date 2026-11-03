@@ -18,4 +18,6 @@ RUN apt update && apt install -y \
 RUN curl -L https://go.dev/dl/go1.26.3.linux-$(dpkg --print-architecture).tar.gz | tar -C /usr/local -xz
 ENV PATH=$PATH:/usr/local/go/bin
 
+RUN git config --global --add safe.directory /app
+
 WORKDIR /app
