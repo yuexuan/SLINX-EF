@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/slinxlink/node/internal/core"
@@ -13,6 +14,8 @@ import (
 	"github.com/slinxlink/node/internal/service"
 	"github.com/slinxlink/node/internal/util"
 )
+
+var endpointMu sync.Mutex
 
 func GetEndpoints(c *gin.Context) {
 	var list []database.Endpoint
@@ -25,6 +28,8 @@ func GetEndpoints(c *gin.Context) {
 }
 
 func SaveEndpoint(c *gin.Context) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var endpoint database.Endpoint
 	if err := c.ShouldBindJSON(&endpoint); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -84,7 +89,7 @@ func SaveEndpoint(c *gin.Context) {
 			return
 		}
 		var reserved []int
-		if err := json.Unmarshal([]byte(endpoint.Reserved), &reserved); err != nil || len(reserved) != 3 {
+		if err := json.Unmarshal([]byte(endpoint.Reserved), &reserved); err != nil || (len(reserved) != 0 && len(reserved) != 3) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Reserved 格式错误，需为3个数字"})
 			return
 		}
@@ -172,10 +177,12 @@ func SaveEndpoint(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "配置未应用，已恢复节点: " + err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"data": endpoint, "applied": true})
+	c.JSON(200, gin.H{"data": endpoint, "applied": core.Default.Status() == "running", "core_status": core.Default.Status()})
 }
 
 func DeleteEndpoint(c *gin.Context) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var endpoint database.Endpoint
 	if err := database.DB.First(&endpoint, c.Param("id")).Error; err != nil {
 		c.JSON(404, gin.H{"error": "节点不存在"})
@@ -208,10 +215,12 @@ func DeleteEndpoint(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"applied": true})
+	c.JSON(200, gin.H{"applied": core.Default.Status() == "running", "core_status": core.Default.Status()})
 }
 
 func ToggleEndpoint(c *gin.Context) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var endpoint database.Endpoint
 	if err := database.DB.First(&endpoint, c.Param("id")).Error; err != nil {
 		c.JSON(404, gin.H{"error": "节点不存在"})
@@ -228,10 +237,12 @@ func ToggleEndpoint(c *gin.Context) {
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(200, gin.H{"data": endpoint, "applied": true})
+	c.JSON(200, gin.H{"data": endpoint, "applied": core.Default.Status() == "running", "core_status": core.Default.Status()})
 }
 
 func CreateWarpEndpoint(c *gin.Context) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var req struct {
 		Address       string
 		Reserved      string

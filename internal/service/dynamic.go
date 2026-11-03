@@ -128,6 +128,9 @@ func RotateDynamic(ep database.Endpoint) (database.Endpoint, error) {
 			return ep, fmt.Errorf("供应商接口连接失败")
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode == 401 || resp.StatusCode == 403 {
+			return ep, fmt.Errorf("供应商接口认证失败 HTTP %d", resp.StatusCode)
+		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return ep, fmt.Errorf("供应商接口错误 HTTP %d", resp.StatusCode)
 		}

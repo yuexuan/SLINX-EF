@@ -3,6 +3,8 @@ package core
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -29,6 +31,28 @@ func protocolFixtures() []database.Endpoint {
 		nodes = append(nodes, ep)
 	}
 	return nodes
+}
+
+func TestMihomoExportRecognition(t *testing.T) {
+	binary := os.Getenv("EF_MIHOMO_PATH")
+	if binary == "" {
+		t.Skip("Mihomo binary not configured")
+	}
+	for _, ep := range protocolFixtures() {
+		if strings.Contains(ep.Options, `"version":"4`) {
+			continue
+		}
+		content, err := ExportNodes([]database.Endpoint{ep}, []string{ep.Tag}, "mihomo")
+		if err != nil {
+			t.Fatalf("%s: %v", ep.Type, err)
+		}
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		os.WriteFile(path, []byte(content), 0600)
+		if out, err := exec.Command(binary, "-t", "-d", dir, "-f", path).CombinedOutput(); err != nil {
+			t.Fatalf("Mihomo %s: %s %v", ep.Type, out, err)
+		}
+	}
 }
 
 func TestNativeProtocolMatrix(t *testing.T) {
@@ -96,6 +120,9 @@ func TestNodeGraphAndExport(t *testing.T) {
 		t.Fatal("unknown field accepted")
 	}
 	for _, ep := range protocolFixtures() {
+		if ep.Type == "anytls" {
+			ep.Options = `{"tls":{"enabled":true}}`
+		}
 		if ep.Type == "ssh" || ep.Type == "custom" {
 			continue
 		}

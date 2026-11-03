@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/goccy/go-yaml"
 	"github.com/slinxlink/node/internal/database"
@@ -79,10 +81,39 @@ func ExportNodes(nodes []database.Endpoint, tags []string, format string) (strin
 		}
 		return encode(cfg)
 	}
-	if len(eps) > 0 {
+	if len(eps) > 0 && format != "mihomo" {
 		return "", fmt.Errorf("%s 的 WireGuard 转换尚不支持，请导出 sing-box", format)
 	}
 	proxies := []any{}
+	for _, raw := range eps {
+		e := raw.(endpoints)
+		if e.Workers != 0 || e.UDPTimeout != "" {
+			return "", fmt.Errorf("Mihomo 不支持 WireGuard workers/udp_timeout 转换")
+		}
+		if len(e.Peers) != 1 {
+			return "", fmt.Errorf("Mihomo 转换仅支持单 peer")
+		}
+		peer := e.Peers[0]
+		p := map[string]any{"type": "wireguard", "name": e.Tag, "server": peer.Address, "port": peer.Port, "private-key": e.PrivateKey, "public-key": peer.PublicKey, "allowed-ips": peer.AllowedIPs, "reserved": peer.Reserved, "mtu": e.MTU, "udp": true}
+		if e.Detour != "" {
+			p["dialer-proxy"] = e.Detour
+		}
+		for _, cidr := range e.Address {
+			prefix, err := netip.ParsePrefix(cidr)
+			if err != nil {
+				return "", err
+			}
+			key := "ip"
+			if prefix.Addr().Is6() {
+				key = "ipv6"
+			}
+			if p[key] != nil {
+				return "", fmt.Errorf("Mihomo 不支持重复同类型本地地址")
+			}
+			p[key] = prefix.Addr().String()
+		}
+		proxies = append(proxies, p)
+	}
 	lines := []string{}
 	for _, raw := range obs {
 		o := raw.(map[string]any)
@@ -130,7 +161,7 @@ func rejectFields(o map[string]any, allowed string) error {
 }
 
 func mihomoNode(o map[string]any) (map[string]any, error) {
-	if err := rejectFields(o, "type tag server server_port username password version uuid security alter_id method flow tls transport network detour congestion_control udp_relay_mode up_mbps down_mbps obfs packet_encoding"); err != nil {
+	if err := rejectFields(o, "type tag server server_port username password version uuid security alter_id method flow tls transport network detour congestion_control udp_relay_mode up_mbps down_mbps obfs packet_encoding user private_key private_key_passphrase host_key host_key_algorithms idle_session_timeout idle_session_check_interval min_idle_session"); err != nil {
 		return nil, err
 	}
 	typ := fmt.Sprint(o["type"])
@@ -142,18 +173,46 @@ func mihomoNode(o map[string]any) (map[string]any, error) {
 		typ = "socks5"
 	case "shadowsocks":
 		typ = "ss"
-	case "http", "vless", "vmess", "trojan", "hysteria2", "tuic", "anytls":
+	case "http", "vless", "vmess", "trojan", "hysteria2", "tuic", "anytls", "ssh":
 	default:
 		return nil, fmt.Errorf("Mihomo 转换尚不支持 %s", typ)
 	}
 	p := map[string]any{"name": o["tag"], "type": typ, "server": o["server"], "port": o["server_port"]}
-	keys := map[string]string{"username": "username", "password": "password", "uuid": "uuid", "security": "cipher", "method": "cipher", "alter_id": "alterId", "flow": "flow", "detour": "dialer-proxy", "congestion_control": "congestion-controller", "udp_relay_mode": "udp-relay-mode", "packet_encoding": "packet-encoding", "up_mbps": "up", "down_mbps": "down"}
+	keys := map[string]string{"username": "username", "password": "password", "uuid": "uuid", "security": "cipher", "method": "cipher", "alter_id": "alterId", "flow": "flow", "detour": "dialer-proxy", "congestion_control": "congestion-controller", "udp_relay_mode": "udp-relay-mode", "packet_encoding": "packet-encoding", "up_mbps": "up", "down_mbps": "down", "user": "username", "private_key": "private-key", "private_key_passphrase": "private-key-passphrase", "host_key": "host-key", "host_key_algorithms": "host-key-algorithms", "min_idle_session": "min-idle-session"}
 	for a, b := range keys {
 		if v, ok := o[a]; ok {
 			p[b] = v
 		}
 	}
-	if typ != "http" {
+	if typ == "vmess" && p["alterId"] == nil {
+		p["alterId"] = 0
+	}
+	for _, key := range []string{"idle_session_timeout", "idle_session_check_interval"} {
+		if value, ok := o[key]; ok {
+			d, err := time.ParseDuration(fmt.Sprint(value))
+			if err != nil || d%time.Second != 0 {
+				return nil, fmt.Errorf("Mihomo 会话超时需要整数秒")
+			}
+			p[strings.ReplaceAll(key, "_", "-")] = int(d / time.Second)
+		}
+	}
+	if typ == "ssh" {
+		p["udp"] = false
+		if v, ok := p["private-key"].([]any); ok {
+			lines := []string{}
+			for _, line := range v {
+				lines = append(lines, fmt.Sprint(line))
+			}
+			p["private-key"] = strings.Join(lines, "\n")
+		}
+		if v, ok := p["host-key"].(string); ok {
+			p["host-key"] = []string{v}
+		}
+		if v, ok := p["host-key-algorithms"].(string); ok {
+			p["host-key-algorithms"] = []string{v}
+		}
+	}
+	if typ != "http" && typ != "ssh" {
 		p["udp"] = o["network"] != "tcp"
 	}
 	if t, ok := o["tls"].(map[string]any); ok {
@@ -452,6 +511,17 @@ func importOutbound(o map[string]any) (database.Endpoint, error) {
 		if err := rejectFields(o, "type tag detour mtu address private_key peers udp_timeout workers"); err != nil {
 			return n, err
 		}
+		if peers, ok := o["peers"].([]any); ok {
+			for _, raw := range peers {
+				peer, ok := raw.(map[string]any)
+				if !ok {
+					return n, fmt.Errorf("WireGuard peer 必须为对象")
+				}
+				if err := rejectFields(peer, "address port public_key allowed_ips reserved"); err != nil {
+					return n, err
+				}
+			}
+		}
 		b, _ := json.Marshal(o)
 		var e endpoints
 		if err := json.Unmarshal(b, &e); err != nil {
@@ -472,7 +542,11 @@ func importOutbound(o map[string]any) (database.Endpoint, error) {
 		r, _ := json.Marshal(e.Peers[0].Reserved)
 		n.Reserved = string(r)
 		if e.UDPTimeout != "" {
-			return n, fmt.Errorf("WireGuard udp_timeout 导入尚不支持，请使用 SLINX-EF 格式")
+			duration, err := time.ParseDuration(e.UDPTimeout)
+			if err != nil || duration%time.Second != 0 {
+				return n, fmt.Errorf("WireGuard UDP 超时需要整数秒")
+			}
+			n.UDPTimeout = int(duration / time.Second)
 		}
 		return n, nil
 	}

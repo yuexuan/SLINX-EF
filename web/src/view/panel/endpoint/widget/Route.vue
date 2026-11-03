@@ -46,8 +46,8 @@ onMounted(async () => {
 
 async function save() {
     try {
-        await saveRule(props.endpoint.Tag, selected.value)
-        modal.value?.show('success', '保存成功')
+        const res = await saveRule(props.endpoint.Tag, selected.value)
+        modal.value?.show('success', `配置已保存；核心状态：${res.core_status}`)
     } catch (err: any) {
         modal.value?.show('error', err?.error)
     }

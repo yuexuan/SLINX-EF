@@ -31,6 +31,8 @@ func ExportEndpoints(c *gin.Context) {
 }
 
 func ImportEndpoints(c *gin.Context) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var req struct {
 		Content string `json:"content"`
 	}

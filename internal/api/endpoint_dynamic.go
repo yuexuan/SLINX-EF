@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,8 @@ func probeIP(id uint) (string, error) {
 }
 
 func rotateNode(id uint) (database.NodeEvent, error) {
+	endpointMu.Lock()
+	defer endpointMu.Unlock()
 	var old database.Endpoint
 	event := database.NodeEvent{NodeID: id, Kind: "rotation", CreatedAt: time.Now()}
 	if err := database.DB.First(&old, id).Error; err != nil {
@@ -102,7 +105,15 @@ func nodeDetector(id uint) (*service.Detector, func(), error) {
 			_, err = probeIP(id)
 			// Only transport failures qualify. HTTP 403/429 or invalid target responses never do.
 			var networkErr net.Error
-			if err != nil && errors.As(err, &networkErr) {
+			if err != nil && errors.As(err, &networkErr) && ep.Detour == "" {
+				// A failed destination query alone is insufficient evidence. Confirm the
+				// gateway's TCP listener is unreachable before reallocating credentials.
+				address := net.JoinHostPort(ep.Server, strconv.Itoa(ep.ServerPort))
+				connection, dialErr := net.DialTimeout("tcp", address, 5*time.Second)
+				if dialErr == nil {
+					connection.Close()
+					return rawNodeDetector(id)
+				}
 				if _, retryErr := probeIP(id); retryErr != nil {
 					if _, err = rotateNode(id); err != nil {
 						return nil, nil, fmt.Errorf("按需轮换失败: %w", err)

@@ -181,7 +181,8 @@ async function save() {
             ...defaultEndpoint.value,
             Address: JSON.stringify(defaultEndpoint.value.Address),
         }
-        await saveEndpoint(payload)
+        const res = await saveEndpoint(payload)
+        modal.value?.show('success', `配置已保存；核心状态：${res.core_status || 'unknown'}`)
         await load()
         showDrawer.value = false
     } catch (err: any) {
