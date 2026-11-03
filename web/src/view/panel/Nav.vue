@@ -1,9 +1,9 @@
 <template>
     <nav :class="{ collapse: Shrink }">
         <div class="header">
-            <img src="@/asset/image/logo.webp" alt="SLINX" />
+            <img src="@/asset/image/logo.webp" alt="SLINX-EF" />
             <label class="title shrink">
-                <strong>SLINX</strong>
+                <strong>SLINX-EF</strong>
                 <span>节点管理</span>
             </label>
             <button class="menu" @click="Menu = !Menu">

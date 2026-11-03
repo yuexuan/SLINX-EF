@@ -118,6 +118,11 @@ type user struct {
 }
 
 type outbounds struct {
+ Server string `json:"server,omitempty"`
+ ServerPort int `json:"server_port,omitempty"`
+ Username string `json:"username,omitempty"`
+ Password string `json:"password,omitempty"`
+ Version string `json:"version,omitempty"`
 	Type string `json:"type"`
 	Tag  string `json:"tag"`
 }
@@ -169,7 +174,7 @@ func loadDatabase() (db, error) {
 	database.DB.First(&d.Core)
 	database.DB.Where("enable = ?", true).Find(&d.Inbounds)
 	database.DB.Where("enable = ?", true).Find(&d.Users)
-	database.DB.Where("enable = ?", true).Find(&d.Endpoints)
+	database.DB.Find(&d.Endpoints)
 	database.DB.Order("sort asc, `index` asc").Find(&d.Rules)
 
 	var config database.Config
@@ -272,6 +277,13 @@ func generateConfig() error {
 	}
 
 	for _, ep := range d.Endpoints {
+ if !ep.Enable { continue }
+ if ep.Type == "socks" || ep.Type == "http" {
+ ob := outbounds{Type: ep.Type, Tag: ep.Tag, Server: ep.Server, ServerPort: ep.ServerPort, Username: ep.Username, Password: ep.Password}
+ if ep.Type == "socks" { ob.Version = "5" }
+ cfg.Outbounds = append(cfg.Outbounds, ob)
+ continue
+ }
 		ec, err := buildEndpoint(ep)
 		if err != nil {
 			continue
@@ -279,7 +291,11 @@ func generateConfig() error {
 		cfg.Endpoints = append(cfg.Endpoints, ec)
 	}
 
-	cfg.Route = route{
+	// Keep unavailable or deleted targets blocked instead of falling through to direct.
+ available := map[string]bool{"direct":true,"block":true}
+ for _, ep := range d.Endpoints { if ep.Enable { available[ep.Tag] = true } }
+ for i := range d.Rules { if d.Rules[i].Key == "outbound" { var tag string; json.Unmarshal([]byte(d.Rules[i].Value), &tag); if !available[tag] { d.Rules[i].Value = `"block"` } } }
+ cfg.Route = route{
 		Rules: buildRouteRules(d.Rules),
 		Final: "direct",
 	}
@@ -289,7 +305,7 @@ func generateConfig() error {
 		return err
 	}
 
-	return os.WriteFile(Default.ConfigPath, data, 0644)
+	return os.WriteFile(Default.ConfigPath, data, 0600)
 }
 
 // ── inbound builders ─────────────────────────────────────────────────────────

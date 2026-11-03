@@ -10,7 +10,7 @@ const router = createRouter({
         {
             path: '/login',
             component: Auth,
-            meta: { title: 'SLINX · 登录' },
+            meta: { title: 'SLINX-EF · 登录' },
         },
         {
             path: '/',
@@ -23,49 +23,49 @@ const router = createRouter({
                 {
                     path: 'dashboard',
                     component: () => import('../view/panel/dashboard/Dashboard.vue'),
-                    meta: { title: 'SLINX · 仪表盘' },
+                    meta: { title: 'SLINX-EF · 仪表盘' },
                 },
                 {
                     path: 'inbound',
                     component: () => import('../view/panel/inbound/Inbound.vue'),
-                    meta: { title: 'SLINX · 入站管理' },
+                    meta: { title: 'SLINX-EF · 入站管理' },
                 },
                 {
                     path: 'user',
                     component: () => import('../view/panel/user/User.vue'),
-                    meta: { title: 'SLINX · 用户管理' },
+                    meta: { title: 'SLINX-EF · 用户管理' },
                 },
                 {
                     path: 'endpoint',
                     component: () => import('../view/panel/endpoint/Endpoint.vue'),
-                    meta: { title: 'SLINX · 端点管理' },
+                    meta: { title: 'SLINX-EF · 端点管理' },
                 },
                 {
                     path: 'board',
                     component: () => import('../view/panel/board/Board.vue'),
-                    meta: { title: 'SLINX · 面板对接' },
+                    meta: { title: 'SLINX-EF · 面板对接' },
                 },
                 {
                     path: 'detect',
                     component: () => import('../view/panel/detect/Detect.vue'),
-                    meta: { title: 'SLINX · IP检测' },
+                    meta: { title: 'SLINX-EF · IP检测' },
                 },
                 {
                     path: 'core',
                     component: () => import('../view/panel/core/Core.vue'),
-                    meta: { title: 'SLINX · 核心配置' },
+                    meta: { title: 'SLINX-EF · 核心配置' },
                 },
                 {
                     path: 'config',
                     component: () => import('../view/panel/config/Config.vue'),
-                    meta: { title: 'SLINX · 面板配置' },
+                    meta: { title: 'SLINX-EF · 面板配置' },
                 },
             ],
         },
         {
             path: '/sub/:token',
             component: Sub,
-            meta: { title: 'SLINX · 订阅' },
+            meta: { title: 'SLINX-EF · 订阅' },
         },
         {
             path: '/:pathMatch(.*)*',
@@ -75,7 +75,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-    document.title = (to.meta.title as string) || 'SLINX'
+    document.title = (to.meta.title as string) || 'SLINX-EF'
 
     const token = localStorage.getItem('token')
 

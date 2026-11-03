@@ -106,7 +106,7 @@ func initConfig() (bool, error) {
 
 		BoardEnable: false,
 
-		Repo: "https://github.com/slinxlink/node",
+		Repo: "https://github.com/yuexuan/SLINX-EF",
 	}
 
 	return true, DB.Create(&config).Error
@@ -185,7 +185,7 @@ func patchDefaults() {
 	patchInt(&config.SubPort, 2096, &configDirty)
 	patchStr(&config.LogLevel, "info", &configDirty)
 	patchStr(&config.LogPath, "data/slinx.log", &configDirty)
-	patchStr(&config.Repo, "https://github.com/slinxlink/node", &configDirty)
+	patchStr(&config.Repo, "https://github.com/yuexuan/SLINX-EF", &configDirty)
 	if configDirty {
 		DB.Save(&config)
 	}

@@ -2,16 +2,17 @@ package update
 
 import (
 	"encoding/json"
+ "crypto/sha256"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+ "time"
 	"os/exec"
-	"path/filepath"
+
 	"runtime"
 	"strings"
 
-	"github.com/slinxlink/node/internal/database"
 	"github.com/slinxlink/node/internal/util"
 )
 
@@ -26,11 +27,7 @@ type releaseInfo struct {
 	Body    string `json:"body"`
 }
 
-func getRepo() string {
-	var config database.Config
-	database.DB.First(&config)
-	return config.Repo
-}
+func getRepo() string { return "https://github.com/yuexuan/SLINX-EF" }
 
 func apiURL() string {
 	path := strings.TrimPrefix(getRepo(), "https://github.com/")
@@ -82,29 +79,22 @@ func Update(currentVersion string) error {
 		return err
 	}
 
-	tmpDir := filepath.Join(filepath.Dir(exe), "tmp")
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		return err
-	}
-	defer os.RemoveAll(tmpDir)
-
-	tmp := filepath.Join(tmpDir, "slinx.tmp")
-	if err := exec.Command("wget", "-q", "-O", tmp, downloadURL(result.LatestVersion)).Run(); err != nil {
-		util.Error("[update] 下载失败: %v", err)
-		return fmt.Errorf("下载失败: %w", err)
-	}
-
-	if err := os.Rename(tmp, exe); err != nil {
-		util.Error("[update] 替换文件失败: %v", err)
-		return err
-	}
-
-	if err := os.Chmod(exe, 0755); err != nil {
-		util.Error("[update] 设置权限失败: %v", err)
-		return err
-	}
-
-	util.Info("[update] 更新成功: %s，面板即将重启", result.LatestVersion)
-	exec.Command("systemctl", "restart", "slinx").Run()
-	return nil
+ script, err := os.CreateTemp("", "slinx-ef-update-*.sh")
+ if err != nil { return err }
+ resp, err := http.Get(getRepo()+"/releases/download/"+result.LatestVersion+"/install.sh")
+ if err != nil { return err }; defer resp.Body.Close()
+ if resp.StatusCode != 200 { return fmt.Errorf("installer HTTP %d", resp.StatusCode) }
+ _, err = io.Copy(script, resp.Body); script.Close(); if err != nil { return err }
+ defer func(){ if err != nil { os.Remove(script.Name()) } }()
+ sums, err := http.Get(getRepo()+"/releases/download/"+result.LatestVersion+"/SHA256SUMS")
+ if err != nil { return err }; defer sums.Body.Close()
+ if sums.StatusCode != 200 { return fmt.Errorf("checksum HTTP %d", sums.StatusCode) }
+ sumData, err := io.ReadAll(sums.Body); if err != nil { return err }
+ content, err := os.ReadFile(script.Name()); if err != nil { return err }
+ expected := fmt.Sprintf("%x  install.sh", sha256.Sum256(content))
+ found := false; for _, line := range strings.Split(string(sumData), "\n") { if strings.TrimSpace(line)==expected { found=true } }
+ if !found { return fmt.Errorf("installer checksum mismatch") }
+ // Launch outside the service cgroup so restart does not kill the installer.
+ unit := fmt.Sprintf("slinx-ef-update-%d", time.Now().Unix())
+ return exec.Command("systemd-run", "--unit="+unit, "/bin/bash", script.Name(), result.LatestVersion).Run()
 }

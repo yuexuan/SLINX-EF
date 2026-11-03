@@ -10,10 +10,17 @@
         </div>
         <div class="form-row half">
             <span class="form-label">协议</span>
-            <Select v-model="form.Type" :options="[{ label: 'WireGuard', value: 'wireguard' }]" />
+            <Select v-model="form.Type" :options="[{ label: 'WireGuard', value: 'wireguard' }, { label: 'SOCKS5 (ISP)', value: 'socks' }, { label: 'HTTP CONNECT (ISP)', value: 'http' }]" />
         </div>
 
-        <template v-if="form.Type === 'wireguard'">
+        <template v-if="form.Type === 'socks' || form.Type === 'http'">
+ <div class="form-row"><span class="form-label">地址</span><Input v-model="form.Server" /></div>
+ <div class="form-row"><span class="form-label">端口</span><Input v-model="form.ServerPort" type="number" :min="1" :max="65535" /></div>
+ <div class="form-row"><span class="form-label">用户名</span><Input v-model="form.Username" /></div>
+ <div class="form-row"><span class="form-label">密码</span><Input v-model="form.Password" type="password" /></div>
+ <p>不可用或禁用时阻断关联路由；删除后关联路由改为 block。HTTP 仅支持 TCP。</p>
+ </template>
+ <template v-if="form.Type === 'wireguard'">
             <div class="form-row">
                 <span class="form-label">本地 IPv4 地址</span>
                 <Input v-model="form.Address[0]" placeholder="0.0.0.0/32" />

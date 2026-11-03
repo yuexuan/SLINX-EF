@@ -1,12 +1,12 @@
 <template>
     <div class="card md">
         <div class="header">
-            <div class="title">SLINX node</div>
+            <div class="title">SLINX-EF node</div>
         </div>
         <div class="actions">
             <a
                 class="action-btn"
-                href="https://github.com/slinxlink/node"
+                href="https://github.com/yuexuan/SLINX-EF-EF"
                 target="_blank"
                 rel="noopener noreferrer"
             >

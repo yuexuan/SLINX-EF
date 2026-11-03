@@ -38,7 +38,12 @@ func SaveEndpoint(c *gin.Context) {
 		return
 	}
 
-	if endpoint.Type == "wireguard" {
+	if endpoint.Tag == "direct" || endpoint.Tag == "block" { c.JSON(400, gin.H{"error":"保留标签"}); return }
+ if endpoint.Type != "wireguard" && endpoint.Type != "socks" && endpoint.Type != "http" { c.JSON(400, gin.H{"error":"不支持的协议"}); return }
+ if endpoint.Type == "socks" || endpoint.Type == "http" {
+ if strings.TrimSpace(endpoint.Server) == "" || strings.ContainsAny(endpoint.Server, "/ @\t\r\n") || endpoint.ServerPort < 1 || endpoint.ServerPort > 65535 { c.JSON(400, gin.H{"error":"代理地址或端口无效"}); return }
+ }
+ if endpoint.Type == "wireguard" {
 		var address []string
 		if err := json.Unmarshal([]byte(endpoint.Address), &address); err != nil || len(address) != 2 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "本地地址格式错误"})
@@ -109,7 +114,7 @@ func DeleteEndpoint(c *gin.Context) {
 	var endpoint database.Endpoint
 	database.DB.First(&endpoint, id)
 
-	route.CleanupRule("endpoint", endpoint.Tag, "")
+	route.CleanupRule("endpoint", endpoint.Tag, "block")
 
 	if err := database.DB.Delete(&database.Endpoint{}, id).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

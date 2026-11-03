@@ -1,0 +1,44 @@
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*-ef.*']
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --prefix web
+      - run: npm run build --prefix web
+      - run: docker build -t slinx-builder -f Dockerfile.builder .
+      - name: Tests and compilation using upstream builder
+        run: |
+          docker run --rm -v "$PWD:/app" slinx-builder sh -c 'go test ./...'
+          make slinx-amd64 slinx-arm64 VERSION=${GITHUB_REF_NAME}
+          cp install.sh dist/install.sh
+          printf 'repository=%s\ncommit=%s\nversion=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/BUILDINFO
+          cd dist
+          sha256sum slinx_linux_amd64 slinx_linux_arm64 install.sh BUILDINFO > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slinx-ef
+          path: dist/
+      - name: Publish complete release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/slinx_linux_amd64 dist/slinx_linux_arm64 dist/SHA256SUMS dist/BUILDINFO dist/install.sh --draft --title "SLINX-EF $GITHUB_REF_NAME" --generate-notes
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

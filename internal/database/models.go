@@ -217,6 +217,10 @@ type BoardUser struct {
 func (BoardUser) TableName() string { return "board_user" }
 
 type Endpoint struct {
+ Server string
+ ServerPort int
+ Username string
+ Password string
 	ID        uint `gorm:"primarykey"`
 	Enable    bool
 	Tag       string // 端点标签，对应 sing-box config 里 endpoints[].tag，需唯一

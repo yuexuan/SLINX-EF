@@ -6,8 +6,8 @@
                 <h2>独享节点 · 独立IP · 专属域名 · 无限设备</h2>
             </div>
             <div class="logo">
-                <img src="@/asset/image/logo.webp" alt="SLINX" />
-                <span>SLINX</span>
+                <img src="@/asset/image/logo.webp" alt="SLINX-EF" />
+                <span>SLINX-EF</span>
             </div>
         </div>
         <div class="divider-notext"></div>

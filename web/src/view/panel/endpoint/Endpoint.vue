@@ -20,7 +20,7 @@
                                 {{ ep.Type }}
                             </span>
                         </td>
-                        <td>{{ ep.PeerAddress }}:{{ ep.PeerPort }}</td>
+                        <td>{{ ep.Type === 'wireguard' ? ep.PeerAddress : ep.Server }}:{{ ep.Type === 'wireguard' ? ep.PeerPort : ep.ServerPort }}</td>
                         <td>
                             <Toggle :model-value="ep.Enable" @update:model-value="toggle(ep)" />
                         </td>
@@ -81,6 +81,7 @@ function baseEndpoint() {
         Enable: true,
         Tag: '',
         Type: 'wireguard',
+ Server: '', ServerPort: 1080, Username: '', Password: '',
         MTU: 1408,
         Address: ['172.16.0.2/32', 'fd00::2/128'],
         PrivateKey: '',

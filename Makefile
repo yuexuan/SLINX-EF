@@ -25,7 +25,7 @@ web:
 slinx-amd64:
 	@$(DOCKER) "mkdir -p /app/dist && \
 		echo \"\$$(date '+%H:%M:%S') >>> 编译 slinx amd64...\" && \
-		cd /app && GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-linux-gnu-gcc go build -ldflags='-s -w -X main.Version=$(VERSION)' -o dist/slinx_linux_amd64 . && \
+		cd /app && GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC=x86_64-linux-gnu-gcc go build -ldflags='-s -w -X main.Version=$(VERSION) -X main.Commit=$(shell git rev-parse HEAD)' -o dist/slinx_linux_amd64 . && \
 		echo \"\$$(date '+%H:%M:%S') >>> 压缩 slinx amd64...\" && \
 		upx dist/slinx_linux_amd64 && \
 		echo \"\$$(date '+%H:%M:%S') >>> 完成 slinx_linux_amd64\""
@@ -33,7 +33,7 @@ slinx-amd64:
 slinx-arm64:
 	@$(DOCKER) "mkdir -p /app/dist && \
 		echo \"\$$(date '+%H:%M:%S') >>> 编译 slinx arm64...\" && \
-		cd /app && GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -ldflags='-s -w -X main.Version=$(VERSION)' -o dist/slinx_linux_arm64 . && \
+		cd /app && GOOS=linux GOARCH=arm64 CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc go build -ldflags='-s -w -X main.Version=$(VERSION) -X main.Commit=$(shell git rev-parse HEAD)' -o dist/slinx_linux_arm64 . && \
 		echo \"\$$(date '+%H:%M:%S') >>> 压缩 slinx arm64...\" && \
 		upx dist/slinx_linux_arm64 && \
 		echo \"\$$(date '+%H:%M:%S') >>> 完成: slinx_linux_arm64\""

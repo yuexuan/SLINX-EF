@@ -1,106 +1,39 @@
-<div align="center">
-  <img src="web/src/asset/image/logo.webp" width="50" />
-  <h1>SLINX node</h1>
-  <p>基于 sing-box 核心的节点管理面板</p>
+# SLINX-EF
 
-  [![Release](https://img.shields.io/github/v/release/slinxlink/node)](https://github.com/slinxlink/node/releases)
-  [![Go Version](https://img.shields.io/github/go-mod/go-version/slinxlink/node.svg)](https://github.com/slinxlink/node)
-  [![Downloads](https://img.shields.io/github/downloads/slinxlink/node/total.svg)](https://github.com/slinxlink/node/releases/latest)
-  [![License](https://img.shields.io/badge/license-MIT-blue.svg?longCache=true)](LICENSE)
-  [![Go Reference](https://pkg.go.dev/badge/github.com/slinxlink/node.svg)](https://pkg.go.dev/github.com/slinxlink/node)
-  [![Go Report Card](https://goreportcard.com/badge/github.com/slinxlink/node)](https://goreportcard.com/report/github.com/slinxlink/node)
-</div>
+Everflame 的独立单 VPS 节点组件。基于 [slinxlink/node](https://github.com/slinxlink/node)，保留上游历史与 MIT LICENSE，感谢原作者。保持原有界面与单机架构，不包含计费、多机控制或代理池。
 
-> [!IMPORTANT]
-> 本项目仅供个人使用。请勿将其用于非法目的，也请勿在生产环境中使用。
+## 安装与更新
 
-## 安装
+支持 systemd 环境的 Debian、Ubuntu、Rocky、AlmaLinux、Fedora、CentOS/RHEL（dnf），Linux AMD64 / ARM64。
 
 ```bash
-bash <(curl -sL https://raw.githubusercontent.com/slinxlink/node/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/install.sh)
 ```
 
-安装完成后使用 `slinx` 命令管理面板。
+指定版本：在上述命令末尾加 `v0.1.0-ef.1`。重复执行即更新；面板内置更新同样只读取此 Fork，启动独立 systemd 临时单元执行 Release 内经 SHA256 验证的安装脚本。
 
-## 简介
+保留 `/etc/slinx`、`slinx.service` 和 `slinx` 管理命令。安装后执行 `slinx` 查看面板端口、路径及账号信息，建议首次通过 SSH 隧道访问。脚本不会修改系统时区或其他 sing-box 服务。发现未标记的已有 SLINX 安装会退出，需人工检查后迁移。
 
-SLINX node 是一个基于 sing-box 核心的节点管理面板，提供完善的证书管理、机场面板对接、一键节点生成，支持通用、Clash 等多种订阅格式。
+面板从本仓库 Release 下载，检查 SHA256SUMS。核心固定使用上游 `sing-box-1.13.12`，压缩包 SHA256 固定在脚本中，不追踪 latest。更新前停止服务并备份二进制、数据库、证书、配置至 `/etc/slinx/backups/时间戳`；启动或配置检查失败自动恢复已有版本。首次安装失败保留诊断文件，不宣称成功。
 
-## 功能
+## ISP 出口
 
-- 🚀 基于 sing-box 核心，支持 VLESS、VMess、Hysteria2、Trojan、TUIC、AnyTLS 协议
-- 📜 证书管理，支持 Let's Encrypt、ZeroSSL，DNS/HTTP 验证
-- 🔗 机场面板对接（SSPanel），自动同步用户与流量
-- 📦 多种订阅格式，支持通用、Clash、Surge、sing-box JSON
-- 👥 多用户管理
-- 📊 实时系统监控、流量统计
-- 🌐 端点管理（WireGuard / Cloudflare WARP），支持一键注册换IP与路由规则绑定
-- 🔍 IP 检测、解锁检测、回程检测
-- 🔄 一键更新，支持核心独立更新
+端点页面选择 SOCKS5 或 HTTP CONNECT，填入标签、地址、端口、用户名和密码，然后使用现有路由界面绑定入站。多个入站可共用一个出口。HTTP CONNECT 仅支持 TCP。代理连接失败不会尝试 Direct；禁用保留绑定并阻断，重新启用恢复；删除改为 block，需要显式重新绑定。凭证仅写入服务端配置，不加入订阅，订阅仍按原有入站名称生成节点。
 
-## 关于本项目
+## 发布与来源核对
 
-SLINX node 专为普通自建节点用户设计，化繁为简，让搭建节点不再是门槛。
+手动触发 Release 工作流只生成构建 Artifact；推送 `v*-ef.*` 标签才发布。复用 Dockerfile.builder 和 Makefile 的 CGO 交叉编译及前端嵌入方式。两种架构全部构建成功后先创建草稿并上传资源，再公开 Release。资源包括两个面板二进制、SHA256SUMS、BUILDINFO、install.sh。
 
-整个使用流程极其简单：登录终端 → 粘贴安装脚本 → 打开面板 → 点击一键生成 → 复制订阅链接，即可上手使用。
+`slinx version`（二进制 `/etc/slinx/slinx version`）输出版本及源码提交；可与 BUILDINFO、标签提交及 Actions 记录核对。
 
-本项目不追求功能堆砌，只做普通用户真正需要的功能。
+## 排错、恢复与卸载
 
-## 截图
+`systemctl status slinx`、`journalctl -u slinx -n 100`；核心检查：`cd /etc/slinx && bin/sing-box check -c data/sing-box.json`。更新日志：`journalctl -u 'slinx-ef-update-*'`。手工回滚时先停止服务，从备份还原 slinx、bin、data、cert 与 service，然后 daemon-reload 并启动。
 
-![Dashboard](doc/dashboard.png)
-![Detection](doc/detect.png)
-![Inbound](doc/inbound.png)
+卸载：先备份 `/etc/slinx`，执行 `systemctl disable --now slinx`，删除 `/etc/systemd/system/slinx.service` 和 `/usr/local/bin/slinx`，再 daemon-reload。数据目录由管理员确认后手动删除。
 
-## 支持的平台
+## 同步上游
 
-**操作系统：** Ubuntu、Debian、Oracle Linux
+`git fetch upstream` 后在独立分支合并上游 main，检查数据库迁移、核心配置兼容性、更新源和安装脚本，跑测试及双架构构建后发布新的 EF 标签。内部 Go 模块和表名保留上游标识。
 
-**架构：** `amd64` · `arm64`
-
-## 协议
-
-当前支持：VLESS、VMess、Hysteria2、Trojan、TUIC、AnyTLS、WireGuard（出站）
-
-计划支持：Shadowsocks、ShadowTLS
-
-## 订阅
-
-当前支持：通用订阅、Clash、Surge、sing-box JSON
-
-Clash/Surge 订阅为完整规则集订阅，包含流媒体、AI、通讯、游戏等分组，规则集每周自动更新。
-
-计划支持：规则集自定义
-
-## 机场对接
-
-初版只支持对接自研机场
-
-v2 版本计划支持：SSPanel、v2board
-
-## 多语言支持
-
-当前支持：简体中文
-
-v3 版本计划支持：繁体中文、English、Русский、فارسی
-
-## 社区
-
-[![Telegram](https://img.shields.io/badge/Telegram-@SLINXlink-26A5E4?logo=telegram&logoColor=white)](https://t.me/slinxlink)
-
-## 鸣谢
-
-- [sing-box](https://github.com/SagerNet/sing-box) — 核心代理引擎
-- [3x-ui](https://github.com/MHSanaei/3x-ui) — UI 界面设计借鉴
-- [lmc999](https://github.com/lmc999/RegionRestrictionCheck) — 解锁检测脚本，已进行 Go 语言化改造
-- [Loyalsoldier](https://github.com/Loyalsoldier/clash-rules) — Clash 规则集
-- [ACL4SSR](https://github.com/ACL4SSR/ACL4SSR) — Clash 规则集
-- [Claude](https://claude.ai) — AI 编程助手，本项目大量代码由 Claude 协助完成
-
-## 友情链接
-
-- [LINUX DO](https://linux.do)
-
-## License
-
-[MIT](LICENSE)
+实际交付验证记录见 `doc/EF-VALIDATION.md`；未通过真实部署前不视为 P4 完成。
