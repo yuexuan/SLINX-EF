@@ -16,7 +16,7 @@ if [[ ! -e "$DIR/.slinx-ef" ]] && systemctl cat slinx.service >/dev/null 2>&1; t
 TMP=$(mktemp -d)
 trap 'rm -rf -- "$TMP"' EXIT
 VERSION=${1:-$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p')}
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-ef\.[0-9]+$ ]] || { echo 'Invalid release'; exit 1; }
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Invalid release'; exit 1; }
 BASE="https://github.com/$REPO/releases/download/$VERSION"
 curl -fsSL "$BASE/slinx_linux_$ARCH" -o "$TMP/slinx_linux_$ARCH"
 curl -fsSL "$BASE/SHA256SUMS" -o "$TMP/SHA256SUMS"
