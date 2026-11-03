@@ -10,7 +10,7 @@ Everflame 的独立单 VPS 节点组件。基于 [slinxlink/node](https://github
 bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/install.sh)
 ```
 
-指定版本：在上述命令末尾加 `v0.1.0-ef.1`。重复执行即更新；面板内置更新同样只读取此 Fork，启动独立 systemd 临时单元执行 Release 内经 SHA256 验证的安装脚本。
+指定版本：在上述命令末尾加 `v0.1.0-ef.3`。重复执行即更新；面板内置更新同样只读取此 Fork，启动独立 systemd 临时单元执行 Release 内经 SHA256 验证的安装脚本。
 
 保留 `/etc/slinx`、`slinx.service` 和 `slinx` 管理命令。安装后执行 `slinx` 查看面板端口、路径及账号信息，建议首次通过 SSH 隧道访问。脚本不会修改系统时区或其他 sing-box 服务。发现未标记的已有 SLINX 安装会退出，需人工检查后迁移。
 
@@ -37,3 +37,5 @@ bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/instal
 `git fetch upstream` 后在独立分支合并上游 main，检查数据库迁移、核心配置兼容性、更新源和安装脚本，跑测试及双架构构建后发布新的 EF 标签。内部 Go 模块和表名保留上游标识。
 
 实际交付验证记录见 `doc/EF-VALIDATION.md`；未通过真实部署前不视为 P4 完成。
+
+真实部署已验证：建议 Reality 握手目标使用本次验证通过的 `www.cloudflare.com`。完整结果与限制见 [实际验收记录](doc/EF-VALIDATION.md)。
