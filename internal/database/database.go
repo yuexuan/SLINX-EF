@@ -37,6 +37,7 @@ func Init() (bool, error) {
 		&Board{},
 		&BoardUser{},
 		&Endpoint{},
+		&NodeEvent{},
 		&Rule{},
 		&Warp{},
 		&SystemLog{},

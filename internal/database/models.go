@@ -217,16 +217,19 @@ type BoardUser struct {
 func (BoardUser) TableName() string { return "board_user" }
 
 type Endpoint struct {
- Server string
- ServerPort int
- Username string
- Password string
-	ID        uint `gorm:"primarykey"`
-	Enable    bool
-	Tag       string // 端点标签，对应 sing-box config 里 endpoints[].tag，需唯一
-	Type      string // wireguard / tailscale
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Options    string `gorm:"type:text"` // Protocol-specific sing-box fields, JSON object.
+	Detour     string // Tag of the upstream dialer.
+	Dynamic    string `gorm:"type:text"` // Allocation policy; never a sing-box protocol.
+	Server     string
+	ServerPort int
+	Username   string
+	Password   string
+	ID         uint `gorm:"primarykey"`
+	Enable     bool
+	Tag        string // 端点标签，对应 sing-box config 里 endpoints[].tag，需唯一
+	Type       string // wireguard / tailscale
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 
 	// WireGuard
 	MTU        int    // MTU，0 表示默认
@@ -283,6 +286,9 @@ type SystemLog struct {
 func (SystemLog) TableName() string { return "system_log" }
 
 type IP struct {
+	LatencyMS       int64
+	NodeID          uint `gorm:"index"`
+	NodeTag         string
 	ID              uint      `gorm:"primarykey"`
 	IP              string    // 用于缓存验证
 	Source          string    // 数据来源平台
@@ -300,6 +306,8 @@ type IP struct {
 func (IP) TableName() string { return "ip" }
 
 type Unlock struct {
+	NodeID    uint `gorm:"index"`
+	NodeTag   string
 	ID        uint   `gorm:"primarykey"`
 	IP        string // 出口IP，用于缓存验证
 	IPVersion string // v4 / v6
@@ -321,3 +329,15 @@ type BackRoute struct {
 }
 
 func (BackRoute) TableName() string { return "back_route" }
+
+// NodeEvent keeps allocation and failed probe history without credentials.
+type NodeEvent struct {
+	ID        uint `gorm:"primarykey"`
+	NodeID    uint `gorm:"index"`
+	NodeTag   string
+	Kind      string
+	BeforeIP  string
+	AfterIP   string
+	Status    string
+	CreatedAt time.Time
+}

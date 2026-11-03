@@ -10,17 +10,28 @@
         </div>
         <div class="form-row half">
             <span class="form-label">协议</span>
-            <Select v-model="form.Type" :options="[{ label: 'WireGuard', value: 'wireguard' }, { label: 'SOCKS5 (ISP)', value: 'socks' }, { label: 'HTTP CONNECT (ISP)', value: 'http' }]" />
+            <Select v-model="form.Type" :options="protocols.map(value => ({label: value, value}))" />
         </div>
-
-        <template v-if="form.Type === 'socks' || form.Type === 'http'">
- <div class="form-row"><span class="form-label">地址</span><Input v-model="form.Server" /></div>
- <div class="form-row"><span class="form-label">端口</span><Input v-model="form.ServerPort" type="number" :min="1" :max="65535" /></div>
- <div class="form-row"><span class="form-label">用户名</span><Input v-model="form.Username" /></div>
- <div class="form-row"><span class="form-label">密码</span><Input v-model="form.Password" type="password" /></div>
- <p>不可用或禁用时阻断关联路由；删除后关联路由改为 block。HTTP 仅支持 TCP。</p>
- </template>
- <template v-if="form.Type === 'wireguard'">
+        <div class="form-row"><span class="form-label">上游中继</span><Input v-model="form.Detour" placeholder="中继节点标签，空为直连拨号" /></div>
+        <template v-if="form.Type !== 'wireguard'">
+            <div class="form-row"><span class="form-label">地址</span><Input v-model="form.Server" /></div>
+            <div class="form-row"><span class="form-label">端口</span><Input v-model="form.ServerPort" type="number" :min="1" :max="65535" /></div>
+            <div v-if="['socks','http','ssh'].includes(form.Type)" class="form-row"><span class="form-label">{{ form.Type === 'ssh' ? 'SSH 用户' : '用户名' }}</span><Input v-model="form.Username" /></div>
+            <div v-if="!['vless','vmess'].includes(form.Type)" class="form-row"><span class="form-label">密码</span><Input v-model="form.Password" type="password" /></div>
+            <div v-for="field in fields[form.Type] || []" :key="field" class="form-row">
+                <span class="form-label">{{ field }}</span><Input :model-value="options[field] ?? ''" @update:model-value="setOption(field, $event)" />
+            </div>
+            <div class="form-row" v-if="form.Type === 'ssh'"><span class="form-label">私钥 PEM</span><textarea :value="options.private_key || ''" @input="setOption('private_key', ($event.target as HTMLTextAreaElement).value)" /></div>
+            <p>参数遵循 sing-box 1.13.12。HTTP/SSH 仅 TCP；SOCKS4/4a 不支持 UDP。TLS、Reality、传输层及 UDP 参数可在下方 JSON 中编辑，保存时由核心检查。</p>
+            <label>协议 Options JSON（含凭据，请妥善保管）<textarea v-model="form.Options" spellcheck="false" rows="10" /></label>
+            <button type="button" @click="setDefaults">填入当前协议示例</button>
+        </template>
+        <template v-if="['socks','http'].includes(form.Type)">
+            <label>动态策略 <Select v-model="dynamicMode" :options="['fixed','session','api'].map(value => ({label:value,value}))" /></label>
+            <p>会话模板使用 {session}、{username}、{password}；ttl_seconds 为有效秒数。API mapping 将 JSON 字段路径映射至 server/server_port/username/password。rotate_on_failure 仅对连续传输故障轮换，目标站 403/429 不触发。</p>
+            <textarea v-model="form.Dynamic" spellcheck="false" rows="8" aria-label="动态代理策略 JSON" />
+        </template>
+        <template v-if="form.Type === 'wireguard'">
             <div class="form-row">
                 <span class="form-label">本地 IPv4 地址</span>
                 <Input v-model="form.Address[0]" placeholder="0.0.0.0/32" />
@@ -113,6 +124,30 @@ const form = defineModel<any>({
     }),
 })
 
+const protocols = ['socks','http','ssh','shadowsocks','vless','vmess','trojan','hysteria2','tuic','anytls','wireguard','custom']
+const fields: Record<string, string[]> = {
+    socks: ['version'], ssh: ['private_key_passphrase','host_key'], shadowsocks: ['method'],
+    vless: ['uuid','flow'], vmess: ['uuid','security'], tuic: ['uuid','congestion_control','udp_relay_mode'],
+}
+const options = computed(() => { try { return JSON.parse(form.value.Options || '{}') } catch { return {} } })
+function setOption(field: string, value: unknown) {
+    form.value.Options = JSON.stringify({...options.value, [field]: value}, null, 2)
+}
+function setDefaults() {
+    const defaults: Record<string, any> = {
+        socks: {version:'5'}, http: {tls:{enabled:true,server_name:form.value.Server}}, ssh: {host_key:[]},
+        shadowsocks: {method:'aes-128-gcm'}, vless: {uuid:'',tls:{enabled:true}}, vmess:{uuid:'',security:'auto'},
+        trojan:{tls:{enabled:true}}, hysteria2:{tls:{enabled:true}, up_mbps:100,down_mbps:100},
+        tuic:{uuid:'',tls:{enabled:true,alpn:['h3']},congestion_control:'cubic',udp_relay_mode:'native'},
+        anytls:{tls:{enabled:true},idle_session_timeout:'30s'}, custom:{type:'socks',version:'5'},
+    }
+    form.value.Options=JSON.stringify(defaults[form.value.Type] || {},null,2)
+}
+
+const dynamicMode = computed({
+    get: () => {try {return JSON.parse(form.value.Dynamic || '{}').mode || 'fixed'} catch {return 'fixed'}},
+    set: (mode: string) => {form.value.Dynamic=JSON.stringify(mode==='session' ? {mode,session_id:'',ttl_seconds:600,username_template:'{username}-session-{session}',rotate_on_failure:false} : mode==='api' ? {mode,url:'',method:'POST',headers:{},body:'{}',mapping:{server:'data.host',server_port:'data.port'},rotate_on_failure:false} : {mode}, null, 2)},
+})
 const reserved = computed({
     get() {
         if (!form.value.Reserved) return ''
@@ -139,6 +174,7 @@ async function genKeyPair() {
 </script>
 
 <style scoped>
+textarea { width: 100%; min-height: 90px; background: var(--color-bg); color: var(--color-text-light); padding: 12px; border-radius: 10px; }
 .endpoint {
     display: flex;
     flex-direction: column;

@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -15,13 +16,17 @@ var httpClient = &http.Client{
 }
 
 func FetchIPInfo(source string) (*database.IP, error) {
+	return NewDetector(httpClient, 0, "服务器直连").FetchIPInfo(source)
+}
+
+func (d *Detector) FetchIPInfo(source string) (*database.IP, error) {
 	switch source {
 	case "ip-api.com":
-		return fetchFromIpApiCom()
+		return d.fetchFromIpApiCom()
 	case "ippure.com":
-		return fetchFromIppure()
+		return d.fetchFromIppure()
 	case "ip2location.io":
-		return fetchFromIp2Location()
+		return d.fetchFromIp2Location()
 	default:
 		return nil, fmt.Errorf("不支持的数据源: %s", source)
 	}
@@ -43,8 +48,8 @@ type ipApiComResponse struct {
 	Query       string `json:"query"`
 }
 
-func fetchFromIpApiCom() (*database.IP, error) {
-	resp, err := httpClient.Get("http://ip-api.com/json/?fields=status,message,countryCode,city,isp,as,mobile,proxy,hosting,query")
+func (d *Detector) fetchFromIpApiCom() (*database.IP, error) {
+	resp, err := d.client.Get("http://ip-api.com/json/?fields=status,message,countryCode,city,isp,as,mobile,proxy,hosting,query")
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +89,7 @@ func fetchFromIpApiCom() (*database.IP, error) {
 		UpdatedAt:       time.Now(),
 	}
 
-	return upsertIP(record)
+	return d.saveIP(record)
 }
 
 // ────────────────────────────────────────────────
@@ -102,8 +107,8 @@ type ippureResponse struct {
 	IsResidential  bool   `json:"isResidential"`
 }
 
-func fetchFromIppure() (*database.IP, error) {
-	resp, err := httpClient.Get("https://my.ippure.com/v1/info")
+func (d *Detector) fetchFromIppure() (*database.IP, error) {
+	resp, err := d.client.Get("https://my.ippure.com/v1/info")
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +138,7 @@ func fetchFromIppure() (*database.IP, error) {
 		UpdatedAt:       time.Now(),
 	}
 
-	return upsertIP(record)
+	return d.saveIP(record)
 }
 
 // ────────────────────────────────────────────────
@@ -149,8 +154,8 @@ type ip2LocationResponse struct {
 	IsProxy     bool   `json:"is_proxy"`
 }
 
-func fetchFromIp2Location() (*database.IP, error) {
-	resp, err := httpClient.Get("https://api.ip2location.io/")
+func (d *Detector) fetchFromIp2Location() (*database.IP, error) {
+	resp, err := d.client.Get("https://api.ip2location.io/")
 	if err != nil {
 		return nil, err
 	}
@@ -180,26 +185,19 @@ func fetchFromIp2Location() (*database.IP, error) {
 		UpdatedAt:       time.Now(),
 	}
 
-	return upsertIP(record)
+	return d.saveIP(record)
 }
 
 // ────────────────────────────────────────────────
 // 通用工具
 // ────────────────────────────────────────────────
 
-func upsertIP(record *database.IP) (*database.IP, error) {
-	var existing database.IP
-	database.DB.Where(database.IP{
-		Source:    record.Source,
-		IPVersion: record.IPVersion,
-	}).First(&existing)
-
-	if existing.ID == 0 {
-		database.DB.Create(record)
-	} else {
-		record.ID = existing.ID
-		database.DB.Save(record)
+func (d *Detector) saveIP(record *database.IP) (*database.IP, error) {
+	if net.ParseIP(record.IP) == nil {
+		return nil, fmt.Errorf("数据源未返回有效出口 IP")
 	}
-
-	return record, nil
+	record.NodeID = d.nodeID
+	record.NodeTag = d.nodeTag
+	record.LatencyMS = time.Since(d.started).Milliseconds()
+	return record, database.DB.Create(record).Error
 }

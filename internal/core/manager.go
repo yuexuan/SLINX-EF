@@ -24,6 +24,7 @@ type Manager struct {
 	ConfigPath string
 	running    bool
 	mu         sync.Mutex
+	applyMu    sync.Mutex
 	waitDone   chan struct{}
 }
 
@@ -79,7 +80,7 @@ func (m *Manager) Start() error {
 	if err := service.EnableHop(); err != nil {
 		util.Warn("[core] 端口跳跃启动失败: %v", err)
 	}
-	go m.watch()
+	go m.watch(m.cmd, m.waitDone)
 	return nil
 }
 
@@ -130,15 +131,34 @@ func (m *Manager) Check() error {
 }
 
 func (m *Manager) Apply() error {
+	m.applyMu.Lock()
+	defer m.applyMu.Unlock()
+	previous, readErr := os.ReadFile(m.ConfigPath)
+	restore := func() {
+		if readErr == nil {
+			os.WriteFile(m.ConfigPath, previous, 0600)
+		}
+	}
 	if err := generateConfig(); err != nil {
+		restore()
 		return err
 	}
 	if err := m.Check(); err != nil {
-		util.Error("[core] 配置校验失败: %v", err)
+		restore()
 		return err
 	}
 	if m.Status() == "running" {
-		return m.Restart()
+		if err := m.Restart(); err != nil {
+			restore()
+			m.Start()
+			return err
+		}
+		time.Sleep(400 * time.Millisecond)
+		if m.Status() != "running" {
+			restore()
+			m.Start()
+			return fmt.Errorf("新核心启动失败，已尝试恢复旧配置")
+		}
 	}
 	return nil
 }
@@ -167,9 +187,7 @@ func (m *Manager) Version() string {
 	return "unknown"
 }
 
-func (m *Manager) watch() {
-	cmd := m.cmd
-	waitDone := m.waitDone
+func (m *Manager) watch(cmd *exec.Cmd, waitDone chan struct{}) {
 	cmd.Wait()
 	close(waitDone)
 

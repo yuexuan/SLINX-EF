@@ -16,6 +16,7 @@
                 </button>
             </div>
         </div>
+        <p>{{ ipData?.NodeTag || '服务器直连' }} · 数据来源 {{ ipData?.Source || source }}（类型为供应商判断）</p>
         <div class="ip-detect-body">
             <div class="ip-detect-item">
                 <div class="ip-detect-label">IP 地址</div>
@@ -78,6 +79,8 @@
 </template>
 
 <script setup lang="ts">
+const props=defineProps<{nodeId:number}>()
+const modal=inject<any>('modal')
 import Select from '@/component/ui/Select.vue'
 import { getIP, fetchIP } from '@/api/detect'
 import { translateType, typeClass } from '@/util/iptype'
@@ -102,7 +105,7 @@ function countryFlag(code?: string) {
 async function handleFetch() {
     loading.value = true
     try {
-        const res = await fetchIP(source.value)
+        const res = await fetchIP(source.value, props.nodeId)
         ipData.value = res.data
         const idx = allData.value.findIndex(
             (r: any) => r.Source === source.value && r.IPVersion === 'v4',
@@ -112,13 +115,14 @@ async function handleFetch() {
         } else {
             allData.value.push(res.data)
         }
+    } catch(err:any) { modal.value?.show('error',err.error)
     } finally {
         loading.value = false
     }
 }
 
 onMounted(async () => {
-    const res = await getIP()
+    const res = await getIP(props.nodeId)
     if (res.data?.length) {
         allData.value = res.data
         ipData.value =

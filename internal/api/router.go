@@ -115,7 +115,12 @@ func RegisterRoute(engine *gin.Engine) {
 
 		// 端点
 		private.GET("/endpoint", GetEndpoints)
+		private.GET("/endpoint/:id", GetEndpoint)
+		private.POST("/endpoint/:id/rotate", RotateEndpoint)
+		private.GET("/detect/history", NodeHistory)
 		private.PUT("/endpoint/save", SaveEndpoint)
+		private.POST("/endpoint/export", ExportEndpoints)
+		private.POST("/endpoint/import", ImportEndpoints)
 		private.DELETE("/endpoint/:id", DeleteEndpoint)
 		private.PUT("/endpoint/:id/toggle", ToggleEndpoint)
 		private.POST("/endpoint/warp", CreateWarpEndpoint)

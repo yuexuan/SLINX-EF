@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -9,7 +10,6 @@ import (
 	"time"
 
 	"github.com/slinxlink/node/internal/database"
-	"github.com/slinxlink/node/internal/util"
 )
 
 const uaBrowser = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36 Edg/112.0.1722.64"
@@ -53,7 +53,14 @@ var platforms = []string{
 }
 
 func FetchUnlockInfo() ([]database.Unlock, error) {
-	ipv4, _ := util.GetPublicIPs()
+	return NewDetector(followClient, 0, "服务器直连").FetchUnlockInfo()
+}
+
+func (d *Detector) FetchUnlockInfo() ([]database.Unlock, error) {
+	ipv4, err := d.PublicIP()
+	if err != nil {
+		return nil, err
+	}
 
 	results := make([]UnlockResult, len(platforms))
 	var wg sync.WaitGroup
@@ -62,11 +69,18 @@ func FetchUnlockInfo() ([]database.Unlock, error) {
 		wg.Add(1)
 		go func(idx int, p string) {
 			defer wg.Done()
-			results[idx] = checkPlatform(p)
+			results[idx] = d.checkPlatform(p)
 		}(i, platform)
 	}
 
 	wg.Wait()
+	after, err := d.PublicIP()
+	if err != nil {
+		return nil, err
+	}
+	if after != ipv4 {
+		return nil, fmt.Errorf("检测期间出口 IP 改变，结果无法归属；请使用粘性会话后重试")
+	}
 
 	var unlocks []database.Unlock
 	for _, r := range results {
@@ -79,18 +93,10 @@ func FetchUnlockInfo() ([]database.Unlock, error) {
 			UpdatedAt: time.Now(),
 		}
 
-		var existing database.Unlock
-		database.DB.Where(database.Unlock{
-			IP:        ipv4,
-			IPVersion: "v4",
-			Platform:  r.Platform,
-		}).First(&existing)
-
-		if existing.ID == 0 {
-			database.DB.Create(&record)
-		} else {
-			record.ID = existing.ID
-			database.DB.Save(&record)
+		record.NodeID = d.nodeID
+		record.NodeTag = d.nodeTag
+		if err := database.DB.Create(&record).Error; err != nil {
+			return nil, err
 		}
 
 		unlocks = append(unlocks, record)
@@ -99,40 +105,40 @@ func FetchUnlockInfo() ([]database.Unlock, error) {
 	return unlocks, nil
 }
 
-func checkPlatform(platform string) UnlockResult {
+func (d *Detector) checkPlatform(platform string) UnlockResult {
 	switch platform {
 	case "apple":
-		return checkApple()
+		return d.checkApple()
 	case "bing":
-		return checkBing()
+		return d.checkBing()
 	case "google_play":
-		return checkGooglePlay()
+		return d.checkGooglePlay()
 	case "steam":
-		return checkSteam()
+		return d.checkSteam()
 	case "reddit":
-		return checkReddit()
+		return d.checkReddit()
 	case "wikipedia":
-		return checkWikipedia()
+		return d.checkWikipedia()
 	case "netflix":
-		return checkNetflix()
+		return d.checkNetflix()
 	case "disney":
-		return checkDisney()
+		return d.checkDisney()
 	case "prime_video":
-		return checkPrimeVideo()
+		return d.checkPrimeVideo()
 	case "youtube_premium":
-		return checkYouTubePremium()
+		return d.checkYouTubePremium()
 	case "dazn":
-		return checkDazn()
+		return d.checkDazn()
 	case "tvbanywhere":
-		return checkTVBAnywhere()
+		return d.checkTVBAnywhere()
 	case "iqiyi":
-		return checkIqiyi()
+		return d.checkIqiyi()
 	case "claude":
-		return checkClaude()
+		return d.checkClaude()
 	case "chatgpt":
-		return checkChatGPT()
+		return d.checkChatGPT()
 	case "gemini":
-		return checkGemini()
+		return d.checkGemini()
 	default:
 		return UnlockResult{Platform: platform, Status: "false"}
 	}
@@ -142,8 +148,8 @@ func checkPlatform(platform string) UnlockResult {
 // 常用平台
 // ────────────────────────────────────────────────
 
-func checkApple() UnlockResult {
-	resp, err := followClient.Get("https://gspe1-ssl.ls.apple.com/pep/gcc")
+func (d *Detector) checkApple() UnlockResult {
+	resp, err := d.client.Get("https://gspe1-ssl.ls.apple.com/pep/gcc")
 	if err != nil {
 		return UnlockResult{Platform: "apple", Status: "false"}
 	}
@@ -156,10 +162,10 @@ func checkApple() UnlockResult {
 	return UnlockResult{Platform: "apple", Status: "true", Region: strings.ToUpper(region)}
 }
 
-func checkBing() UnlockResult {
+func (d *Detector) checkBing() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://www.bing.com/search?q=curl", nil)
 	req.Header.Set("User-Agent", uaBrowser)
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "bing", Status: "false"}
 	}
@@ -177,12 +183,12 @@ func checkBing() UnlockResult {
 	return UnlockResult{Platform: "bing", Status: "true", Region: strings.ToUpper(region)}
 }
 
-func checkGooglePlay() UnlockResult {
+func (d *Detector) checkGooglePlay() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://play.google.com/", nil)
 	req.Header.Set("User-Agent", uaBrowser)
 	req.Header.Set("Accept-Language", "en-US;q=0.9")
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "google_play", Status: "false"}
 	}
@@ -202,8 +208,8 @@ func checkGooglePlay() UnlockResult {
 	return UnlockResult{Platform: "google_play", Status: "true", Region: regionToCountry(region)}
 }
 
-func checkSteam() UnlockResult {
-	resp, err := followClient.Get("https://store.steampowered.com/api/appdetails?appids=761830&filters=price_overview")
+func (d *Detector) checkSteam() UnlockResult {
+	resp, err := d.client.Get("https://store.steampowered.com/api/appdetails?appids=761830&filters=price_overview")
 	if err != nil {
 		return UnlockResult{Platform: "steam", Status: "false"}
 	}
@@ -218,10 +224,10 @@ func checkSteam() UnlockResult {
 	return UnlockResult{Platform: "steam", Status: "true", Region: region}
 }
 
-func checkReddit() UnlockResult {
+func (d *Detector) checkReddit() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://www.reddit.com/", nil)
 	req.Header.Set("User-Agent", uaBrowser)
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "reddit", Status: "false"}
 	}
@@ -232,10 +238,10 @@ func checkReddit() UnlockResult {
 	return UnlockResult{Platform: "reddit", Status: "false"}
 }
 
-func checkWikipedia() UnlockResult {
+func (d *Detector) checkWikipedia() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://zh.wikipedia.org/w/index.php?title=Wikipedia%3A%E6%B2%99%E7%9B%92&action=edit", nil)
 	req.Header.Set("User-Agent", uaBrowser)
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "wikipedia", Status: "false"}
 	}
@@ -252,7 +258,7 @@ func checkWikipedia() UnlockResult {
 // 流媒体
 // ────────────────────────────────────────────────
 
-func checkNetflix() UnlockResult {
+func (d *Detector) checkNetflix() UnlockResult {
 	cookie := `flwssn=d2c72c47-49e9-48da-b7a2-2dc6d7ca9fcf; nfvdid=BQFmAAEBEMZa4XMYVzVGf9-kQ1HXumtAKsCyuBZU4QStC6CGEGIVznjNuuTerLAG8v2-9V_kYhg5uxTB5_yyrmqc02U5l1Ts74Qquezc9AE-LZKTo3kY3g%3D%3D; SecureNetflixId=v%3D3%26mac%3DAQEAEQABABSQHKcR1d0sLV0WTu0lL-BO63TKCCHAkeY.%26dt%3D1745376277212; NetflixId=v%3D3%26ct%3DBgjHlOvcAxLAAZuNS4_CJHy9NKJPzUV-9gElzTlTsmDS1B59TycR-fue7f6q7X9JQAOLttD7OnlldUtnYWXL7VUfu9q4pA0gruZKVIhScTYI1GKbyiEqKaULAXOt0PHQzgRLVTNVoXkxcbu7MYG4wm1870fZkd5qrDOEseZv2WIVk4xIeNL87EZh1vS3RZU3e-qWy2tSmfSNUC-FVDGwxbI6-hk3Zg2MbcWYd70-ghohcCSZp5WHAGXg_xWVC7FHM3aOUVTGwRCU1RgGIg4KDKGr_wsTRRw6HWKqeA..`
 
 	makeReq := func(url string) (string, error) {
@@ -261,7 +267,7 @@ func checkNetflix() UnlockResult {
 		req.Header.Set("accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 		req.Header.Set("accept-language", "en-US,en;q=0.9")
 		req.Header.Set("cookie", cookie)
-		resp, err := followClient.Do(req)
+		resp, err := d.client.Do(req)
 		if err != nil {
 			return "", err
 		}
@@ -292,7 +298,7 @@ func checkNetflix() UnlockResult {
 	return UnlockResult{Platform: "netflix", Status: "false"}
 }
 
-func checkDisney() UnlockResult {
+func (d *Detector) checkDisney() UnlockResult {
 	// Step 1: 获取 assertion
 	req1, _ := http.NewRequest("POST", "https://disney.api.edge.bamgrid.com/devices",
 		strings.NewReader(`{"deviceFamily":"browser","applicationRuntime":"chrome","deviceProfile":"windows","attributes":{}}`))
@@ -300,7 +306,7 @@ func checkDisney() UnlockResult {
 	req1.Header.Set("content-type", "application/json; charset=UTF-8")
 	req1.Header.Set("User-Agent", uaBrowser)
 
-	resp1, err := followClient.Do(req1)
+	resp1, err := d.client.Do(req1)
 	if err != nil {
 		return UnlockResult{Platform: "disney", Status: "false"}
 	}
@@ -326,7 +332,7 @@ func checkDisney() UnlockResult {
 	req2.Header.Set("authorization", "Bearer ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84")
 	req2.Header.Set("User-Agent", uaBrowser)
 
-	resp2, err := followClient.Do(req2)
+	resp2, err := d.client.Do(req2)
 	if err != nil {
 		return UnlockResult{Platform: "disney", Status: "false"}
 	}
@@ -348,7 +354,7 @@ func checkDisney() UnlockResult {
 	req3.Header.Set("authorization", "ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84")
 	req3.Header.Set("User-Agent", uaBrowser)
 
-	resp3, err := followClient.Do(req3)
+	resp3, err := d.client.Do(req3)
 	if err != nil {
 		return UnlockResult{Platform: "disney", Status: "false"}
 	}
@@ -359,7 +365,7 @@ func checkDisney() UnlockResult {
 	// Step 4: 检查 preview/unavailable
 	req4, _ := http.NewRequest("GET", "https://disneyplus.com", nil)
 	req4.Header.Set("User-Agent", uaBrowser)
-	resp4, err := followClient.Do(req4)
+	resp4, err := d.client.Do(req4)
 	isUnavailable := false
 	if err == nil {
 		defer resp4.Body.Close()
@@ -386,11 +392,11 @@ func checkDisney() UnlockResult {
 	return UnlockResult{Platform: "disney", Status: "false"}
 }
 
-func checkPrimeVideo() UnlockResult {
+func (d *Detector) checkPrimeVideo() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://www.primevideo.com", nil)
 	req.Header.Set("User-Agent", uaBrowser)
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "prime_video", Status: "false"}
 	}
@@ -411,13 +417,13 @@ func checkPrimeVideo() UnlockResult {
 	return UnlockResult{Platform: "prime_video", Status: "false"}
 }
 
-func checkYouTubePremium() UnlockResult {
+func (d *Detector) checkYouTubePremium() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://www.youtube.com/premium", nil)
 	req.Header.Set("User-Agent", uaBrowser)
 	req.Header.Set("accept-language", "en-US,en;q=0.9")
 	req.Header.Set("cookie", "YSC=FSCWhKo2Zgw; VISITOR_PRIVACY_METADATA=CgJERRIEEgAgYQ%3D%3D; PREF=f7=4000; __Secure-YEC=CgtRWTBGTFExeV9Iayjele2yBjIKCgJERRIEEgAgYQ%3D%3D; SOCS=CAISOAgDEitib3FfaWRlbnRpdHlmcm9udGVuZHVpc2VydmVyXzIwMjQwNTI2LjAxX3AwGgV6aC1DTiACGgYIgMnpsgY; VISITOR_INFO1_LIVE=Di84mAIbgKY; __Secure-BUCKET=CGQ")
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "youtube_premium", Status: "false"}
 	}
@@ -445,7 +451,7 @@ func checkYouTubePremium() UnlockResult {
 	return UnlockResult{Platform: "youtube_premium", Status: "false"}
 }
 
-func checkDazn() UnlockResult {
+func (d *Detector) checkDazn() UnlockResult {
 	body := `{"Version":"2","LandingPageKey":"generic","Languages":"zh-CN","Platform":"web","Manufacturer":"","PromoCode":"","PlatformAttributes":{}}`
 	req, _ := http.NewRequest("POST", "https://startup.core.indazn.com/misl/v5/Startup", strings.NewReader(body))
 	req.Header.Set("User-Agent", uaBrowser)
@@ -456,7 +462,7 @@ func checkDazn() UnlockResult {
 	req.Header.Set("referer", "https://www.dazn.com/")
 	req.Header.Set("x-session-id", "fd264e77-79d5-480c-a514-a275b649da14")
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "dazn", Status: "false"}
 	}
@@ -477,8 +483,8 @@ func checkDazn() UnlockResult {
 	return UnlockResult{Platform: "dazn", Status: "false"}
 }
 
-func checkTVBAnywhere() UnlockResult {
-	resp, err := followClient.Get("https://uapisfm.tvbanywhere.com.sg/geoip/check/platform/android")
+func (d *Detector) checkTVBAnywhere() UnlockResult {
+	resp, err := d.client.Get("https://uapisfm.tvbanywhere.com.sg/geoip/check/platform/android")
 	if err != nil {
 		return UnlockResult{Platform: "tvbanywhere", Status: "false"}
 	}
@@ -499,11 +505,11 @@ func checkTVBAnywhere() UnlockResult {
 	return UnlockResult{Platform: "tvbanywhere", Status: "false"}
 }
 
-func checkIqiyi() UnlockResult {
+func (d *Detector) checkIqiyi() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://www.iq.com/", nil)
 	req.Header.Set("User-Agent", uaBrowser)
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "iqiyi", Status: "false"}
 	}
@@ -542,10 +548,10 @@ func checkIqiyi() UnlockResult {
 // ────────────────────────────────────────────────
 // AI 工具
 // ────────────────────────────────────────────────
-func checkClaude() UnlockResult {
+func (d *Detector) checkClaude() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://claude.ai/", nil)
 	req.Header.Set("User-Agent", uaBrowser)
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "claude", Status: "false"}
 	}
@@ -560,12 +566,12 @@ func checkClaude() UnlockResult {
 	return UnlockResult{Platform: "claude", Status: "false"}
 }
 
-func checkChatGPT() UnlockResult {
+func (d *Detector) checkChatGPT() UnlockResult {
 	req1, _ := http.NewRequest("GET", "https://api.openai.com/compliance/cookie_requirements", nil)
 	req1.Header.Set("Authorization", "Bearer null")
 	req1.Header.Set("Accept", "*/*")
 	req1.Header.Set("Content-Type", "application/json")
-	resp1, err := followClient.Do(req1)
+	resp1, err := d.client.Do(req1)
 	if err != nil {
 		return UnlockResult{Platform: "chatgpt", Status: "false"}
 	}
@@ -574,7 +580,7 @@ func checkChatGPT() UnlockResult {
 	content1 := string(body1)
 	req2, _ := http.NewRequest("GET", "https://ios.chat.openai.com/", nil)
 	req2.Header.Set("User-Agent", uaBrowser)
-	resp2, err := followClient.Do(req2)
+	resp2, err := d.client.Do(req2)
 	if err != nil {
 		return UnlockResult{Platform: "chatgpt", Status: "false"}
 	}
@@ -598,11 +604,11 @@ func checkChatGPT() UnlockResult {
 	return UnlockResult{Platform: "chatgpt", Status: "false"}
 }
 
-func checkGemini() UnlockResult {
+func (d *Detector) checkGemini() UnlockResult {
 	req, _ := http.NewRequest("GET", "https://gemini.google.com", nil)
 	req.Header.Set("User-Agent", uaBrowser)
 
-	resp, err := followClient.Do(req)
+	resp, err := d.client.Do(req)
 	if err != nil {
 		return UnlockResult{Platform: "gemini", Status: "false"}
 	}

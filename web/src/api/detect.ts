@@ -1,16 +1,17 @@
 import { request } from '@/util/request'
 
-export const getIP = () => request('/api/detect/ip')
-export const fetchIP = (source: string) =>
+export const getIP = (node_id = 0) => request(`/api/detect/ip?node_id=${node_id}`)
+export const fetchIP = (source: string, node_id = 0) =>
     request('/api/detect/ip/fetch', {
         method: 'POST',
-        body: JSON.stringify({ source }),
+        body: JSON.stringify({ source, node_id }),
     })
 
-export const getUnlock = () => request('/api/detect/unlock')
-export const fetchUnlock = () =>
+export const getUnlock = (node_id = 0) => request(`/api/detect/unlock?node_id=${node_id}`)
+export const fetchUnlock = (node_id = 0) =>
     request('/api/detect/unlock/fetch', {
         method: 'POST',
+        body: JSON.stringify({node_id}),
     })
 
 export const getBackRoute = () => request('/api/detect/back-route')

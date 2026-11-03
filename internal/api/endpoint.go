@@ -3,19 +3,25 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/slinxlink/node/internal/core"
 	"github.com/slinxlink/node/internal/database"
 	"github.com/slinxlink/node/internal/route"
+	"github.com/slinxlink/node/internal/service"
 	"github.com/slinxlink/node/internal/util"
 )
 
 func GetEndpoints(c *gin.Context) {
 	var list []database.Endpoint
 	database.DB.Find(&list)
-	c.JSON(http.StatusOK, gin.H{"data": list})
+	items := make([]gin.H, 0, len(list))
+	for _, ep := range list {
+		items = append(items, gin.H{"ID": ep.ID, "Tag": ep.Tag, "Enable": ep.Enable, "Type": ep.Type, "Server": ep.Server, "ServerPort": ep.ServerPort, "PeerAddress": ep.PeerAddress, "PeerPort": ep.PeerPort, "Detour": ep.Detour})
+	}
+	c.JSON(http.StatusOK, gin.H{"data": items})
 }
 
 func SaveEndpoint(c *gin.Context) {
@@ -26,6 +32,19 @@ func SaveEndpoint(c *gin.Context) {
 	}
 
 	endpoint.Tag = strings.TrimSpace(endpoint.Tag)
+	policy, policyErr := service.ParseDynamic(endpoint)
+	if policyErr != nil {
+		c.JSON(400, gin.H{"error": policyErr.Error()})
+		return
+	}
+	if policy.Mode == "session" && policy.SessionID == "" {
+		var err error
+		endpoint, err = service.RotateDynamic(endpoint)
+		if err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+	}
 
 	if msg := util.ValidateTag(endpoint.Tag); msg != "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
@@ -38,24 +57,27 @@ func SaveEndpoint(c *gin.Context) {
 		return
 	}
 
-	if endpoint.Tag == "direct" || endpoint.Tag == "block" { c.JSON(400, gin.H{"error":"保留标签"}); return }
- if endpoint.Type != "wireguard" && endpoint.Type != "socks" && endpoint.Type != "http" { c.JSON(400, gin.H{"error":"不支持的协议"}); return }
- if endpoint.Type == "socks" || endpoint.Type == "http" {
- if strings.TrimSpace(endpoint.Server) == "" || strings.ContainsAny(endpoint.Server, "/ @\t\r\n") || endpoint.ServerPort < 1 || endpoint.ServerPort > 65535 { c.JSON(400, gin.H{"error":"代理地址或端口无效"}); return }
- }
- if endpoint.Type == "wireguard" {
+	if endpoint.Tag == "direct" || endpoint.Tag == "block" {
+		c.JSON(400, gin.H{"error": "保留标签"})
+		return
+	}
+	if endpoint.Type != "wireguard" {
+		if _, err := core.BuildOutbound(endpoint); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	if endpoint.Type == "wireguard" {
 		var address []string
-		if err := json.Unmarshal([]byte(endpoint.Address), &address); err != nil || len(address) != 2 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "本地地址格式错误"})
+		if err := json.Unmarshal([]byte(endpoint.Address), &address); err != nil || len(address) == 0 {
+			c.JSON(400, gin.H{"error": "需要至少一个 WireGuard 本地 CIDR"})
 			return
 		}
-		if !util.ValidateIPv4CIDR(address[0]) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "IPv4 地址段格式错误"})
-			return
-		}
-		if !util.ValidateIPv6CIDR(address[1]) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "IPv6 地址段格式错误"})
-			return
+		for _, cidr := range address {
+			if _, err := netip.ParsePrefix(cidr); err != nil {
+				c.JSON(400, gin.H{"error": "WireGuard CIDR 无效"})
+				return
+			}
 		}
 		if endpoint.MTU < 576 || endpoint.MTU > 9000 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "MTU 必须在 576 - 9000 之间"})
@@ -72,7 +94,7 @@ func SaveEndpoint(c *gin.Context) {
 				return
 			}
 		}
-		if endpoint.PrivateKey == "" || endpoint.PublicKey == "" {
+		if endpoint.PrivateKey == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "请填写密钥对"})
 			return
 		}
@@ -90,55 +112,123 @@ func SaveEndpoint(c *gin.Context) {
 		}
 	}
 
-	if endpoint.ID == 0 {
-		database.DB.Create(&endpoint)
-		util.Info("[endpoint] 添加端点: %s", endpoint.Tag)
-	} else {
-		var old database.Endpoint
-		database.DB.First(&old, endpoint.ID)
-		database.DB.Save(&endpoint)
-		util.Info("[endpoint] 更新端点: %s", endpoint.Tag)
-
-		if old.Tag != endpoint.Tag {
-			route.CleanupRule("endpoint", old.Tag, endpoint.Tag)
+	var nodes []database.Endpoint
+	database.DB.Find(&nodes)
+	var old database.Endpoint
+	if endpoint.ID != 0 {
+		if err := database.DB.First(&old, endpoint.ID).Error; err != nil {
+			c.JSON(404, gin.H{"error": "节点不存在"})
+			return
 		}
 	}
-
-	go core.Default.Apply()
-	c.JSON(http.StatusOK, gin.H{"data": endpoint})
+	for i := range nodes {
+		if nodes[i].ID == endpoint.ID {
+			nodes[i] = endpoint
+		}
+	}
+	if endpoint.ID == 0 {
+		nodes = append(nodes, endpoint)
+	}
+	if err := core.ValidateGraph(nodes); err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	// Validate disabled nodes too, without changing persisted enable state.
+	for i := range nodes {
+		nodes[i].Enable = true
+	}
+	cfg, err := core.NodeConfig(nodes, endpoint.Tag)
+	if err == nil {
+		err = core.CheckConfig(cfg)
+	}
+	if err != nil {
+		c.JSON(400, gin.H{"error": err.Error()})
+		return
+	}
+	if old.ID != 0 && old.Tag != endpoint.Tag {
+		var refs int64
+		database.DB.Model(&database.Endpoint{}).Where("detour = ?", old.Tag).Count(&refs)
+		if refs > 0 {
+			c.JSON(400, gin.H{"error": "标签被中继引用，请先解除引用"})
+			return
+		}
+	}
+	if err := database.DB.Save(&endpoint).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if old.ID != 0 && old.Tag != endpoint.Tag {
+		route.CleanupRule("endpoint", old.Tag, endpoint.Tag)
+	}
+	if err := core.Default.Apply(); err != nil {
+		if old.ID == 0 {
+			database.DB.Delete(&endpoint)
+		} else {
+			database.DB.Save(&old)
+			if old.Tag != endpoint.Tag {
+				route.CleanupRule("endpoint", endpoint.Tag, old.Tag)
+			}
+		}
+		c.JSON(500, gin.H{"error": "配置未应用，已恢复节点: " + err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"data": endpoint, "applied": true})
 }
 
 func DeleteEndpoint(c *gin.Context) {
-	id := c.Param("id")
-
 	var endpoint database.Endpoint
-	database.DB.First(&endpoint, id)
-
-	route.CleanupRule("endpoint", endpoint.Tag, "block")
-
-	if err := database.DB.Delete(&database.Endpoint{}, id).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := database.DB.First(&endpoint, c.Param("id")).Error; err != nil {
+		c.JSON(404, gin.H{"error": "节点不存在"})
 		return
 	}
-	util.Info("[endpoint] 删除端点: %s", id)
-	go core.Default.Apply()
-	c.JSON(http.StatusOK, gin.H{"message": "ok"})
+	// Preserve dependent nodes and route bindings as disabled, never silently direct.
+	var dependents []database.Endpoint
+	database.DB.Where("detour = ?", endpoint.Tag).Find(&dependents)
+	for _, n := range dependents {
+		n.Enable = false
+		n.Detour = ""
+		database.DB.Save(&n)
+	}
+	var rules []database.Rule
+	database.DB.Find(&rules)
+	route.CleanupRule("endpoint", endpoint.Tag, "block")
+	if err := database.DB.Delete(&endpoint).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if err := core.Default.Apply(); err != nil {
+		database.DB.Save(&endpoint)
+		for _, n := range dependents {
+			database.DB.Save(&n)
+		}
+		database.DB.Where("1=1").Delete(&database.Rule{})
+		for _, r := range rules {
+			database.DB.Save(&r)
+		}
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"applied": true})
 }
 
 func ToggleEndpoint(c *gin.Context) {
-	id := c.Param("id")
 	var endpoint database.Endpoint
-	if err := database.DB.First(&endpoint, id).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "端点不存在"})
+	if err := database.DB.First(&endpoint, c.Param("id")).Error; err != nil {
+		c.JSON(404, gin.H{"error": "节点不存在"})
 		return
 	}
 	endpoint.Enable = !endpoint.Enable
-	database.DB.Save(&endpoint)
-
-	// Keep route bindings: disabled targets are blocked during config generation.
-
-	go core.Default.Apply()
-	c.JSON(http.StatusOK, gin.H{"data": endpoint})
+	if err := database.DB.Save(&endpoint).Error; err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	if err := core.Default.Apply(); err != nil {
+		endpoint.Enable = !endpoint.Enable
+		database.DB.Save(&endpoint)
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(200, gin.H{"data": endpoint, "applied": true})
 }
 
 func CreateWarpEndpoint(c *gin.Context) {
@@ -181,6 +271,18 @@ func CreateWarpEndpoint(c *gin.Context) {
 	}
 
 	util.Info("[endpoint] 创建/更新 WARP 端点")
-	go core.Default.Apply()
+	if err := core.Default.Apply(); err != nil {
+		c.JSON(500, gin.H{"error": err.Error()})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": endpoint})
+}
+
+func GetEndpoint(c *gin.Context) {
+	var ep database.Endpoint
+	if err := database.DB.First(&ep, c.Param("id")).Error; err != nil {
+		c.JSON(404, gin.H{"error": "节点不存在"})
+		return
+	}
+	c.JSON(200, gin.H{"data": ep})
 }

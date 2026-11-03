@@ -13,12 +13,12 @@ import (
 // ── sing-box config structs ──────────────────────────────────────────────────
 
 type config struct {
-	Log          log           `json:"log"`
-	Experimental *experimental `json:"experimental,omitempty"`
-	Inbounds     []inbounds    `json:"inbounds"`
-	Outbounds    []outbounds   `json:"outbounds"`
-	Endpoints    []endpoints   `json:"endpoints,omitempty"`
-	Route        route         `json:"route"`
+	Log          log              `json:"log"`
+	Experimental *experimental    `json:"experimental,omitempty"`
+	Inbounds     []inbounds       `json:"inbounds"`
+	Outbounds    []map[string]any `json:"outbounds"`
+	Endpoints    []endpoints      `json:"endpoints,omitempty"`
+	Route        route            `json:"route"`
 }
 
 type log struct {
@@ -118,16 +118,17 @@ type user struct {
 }
 
 type outbounds struct {
- Server string `json:"server,omitempty"`
- ServerPort int `json:"server_port,omitempty"`
- Username string `json:"username,omitempty"`
- Password string `json:"password,omitempty"`
- Version string `json:"version,omitempty"`
-	Type string `json:"type"`
-	Tag  string `json:"tag"`
+	Server     string `json:"server,omitempty"`
+	ServerPort int    `json:"server_port,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
+	Version    string `json:"version,omitempty"`
+	Type       string `json:"type"`
+	Tag        string `json:"tag"`
 }
 
 type endpoints struct {
+	Detour     string         `json:"detour,omitempty"`
 	Type       string         `json:"type"`
 	Tag        string         `json:"tag"`
 	MTU        int            `json:"mtu,omitempty"`
@@ -265,37 +266,42 @@ func generateConfig() error {
 		cfg.Inbounds = append(cfg.Inbounds, ic)
 	}
 
-	cfg.Outbounds = []outbounds{
-		{
-			Type: "direct",
-			Tag:  "direct",
-		},
-		{
-			Type: "block",
-			Tag:  "block",
-		},
+	cfg.Outbounds = []map[string]any{{"type": "direct", "tag": "direct"}, {"type": "block", "tag": "block"}}
+	if err := ValidateGraph(d.Endpoints); err != nil {
+		return err
 	}
-
 	for _, ep := range d.Endpoints {
- if !ep.Enable { continue }
- if ep.Type == "socks" || ep.Type == "http" {
- ob := outbounds{Type: ep.Type, Tag: ep.Tag, Server: ep.Server, ServerPort: ep.ServerPort, Username: ep.Username, Password: ep.Password}
- if ep.Type == "socks" { ob.Version = "5" }
- cfg.Outbounds = append(cfg.Outbounds, ob)
- continue
- }
-		ec, err := buildEndpoint(ep)
-		if err != nil {
+		if !NodeAvailable(ep.Tag, d.Endpoints) {
 			continue
 		}
-		cfg.Endpoints = append(cfg.Endpoints, ec)
+		if ep.Type == "wireguard" {
+			ec, err := buildEndpoint(ep)
+			if err != nil {
+				return err
+			}
+			cfg.Endpoints = append(cfg.Endpoints, ec)
+		} else {
+			ob, err := BuildOutbound(ep)
+			if err != nil {
+				return err
+			}
+			cfg.Outbounds = append(cfg.Outbounds, ob)
+		}
 	}
-
-	// Keep unavailable or deleted targets blocked instead of falling through to direct.
- available := map[string]bool{"direct":true,"block":true}
- for _, ep := range d.Endpoints { if ep.Enable { available[ep.Tag] = true } }
- for i := range d.Rules { if d.Rules[i].Key == "outbound" { var tag string; json.Unmarshal([]byte(d.Rules[i].Value), &tag); if !available[tag] { d.Rules[i].Value = `"block"` } } }
- cfg.Route = route{
+	available := map[string]bool{"direct": true, "block": true}
+	for _, ep := range d.Endpoints {
+		available[ep.Tag] = NodeAvailable(ep.Tag, d.Endpoints)
+	}
+	for i := range d.Rules {
+		if d.Rules[i].Key == "outbound" {
+			var tag string
+			json.Unmarshal([]byte(d.Rules[i].Value), &tag)
+			if !available[tag] {
+				d.Rules[i].Value = `"block"`
+			}
+		}
+	}
+	cfg.Route = route{
 		Rules: buildRouteRules(d.Rules),
 		Final: "direct",
 	}
@@ -581,6 +587,7 @@ func buildWireguardEndpoint(ep database.Endpoint) (endpoints, error) {
 	}
 
 	ec := endpoints{
+		Detour:     ep.Detour,
 		Type:       "wireguard",
 		Tag:        ep.Tag,
 		MTU:        ep.MTU,

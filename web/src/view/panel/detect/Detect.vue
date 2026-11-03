@@ -2,18 +2,30 @@
     <main>
         <div class="page">
             <div class="body">
-                <IPDetect />
-                <UnlockDetect />
-                <BackRouteDetect />
+                <div class="detect"><label>检测出口 <Select v-model="nodeID" :options="nodeOptions" /></label><p>IP 与解锁请求均经过所选节点。下方 MTR 始终检测服务器回程。</p></div>
+                <IPDetect :key="`ip-${nodeID}`" :node-id="Number(nodeID)" />
+                <UnlockDetect :key="`unlock-${nodeID}`" :node-id="Number(nodeID)" />
+                <p>服务器级 MTR 回程（SOCKS / SSH 等节点不支持此项）</p><BackRouteDetect />
+                <details class="detect"><summary>所选节点历史</summary><button @click="loadHistory">刷新历史</button><p v-for="r in history" :key="r.ID">{{ r.UpdatedAt }} · {{ r.NodeTag || '服务器直连' }} · {{ r.IP }} · {{ r.ASN }} · {{ r.Country }} {{ r.City }} · {{ r.Source }}</p></details>
             </div>
         </div>
     </main>
 </template>
 
 <script setup lang="ts">
+import Select from '@/component/ui/Select.vue'
+import { getEndpoints } from '@/api/endpoint'
+import { getIP } from '@/api/detect'
 import IPDetect from '@/view/panel/detect/widget/IP.vue'
 import UnlockDetect from '@/view/panel/detect/widget/Unlock.vue'
 import BackRouteDetect from '@/view/panel/detect/widget/BackRoute.vue'
+const nodeID = ref(0)
+const nodes = ref<any[]>([])
+const history = ref<any[]>([])
+const nodeOptions = computed(() => [{label:'服务器直连',value:0},...nodes.value.filter(n => n.Enable).map(n => ({label:n.Tag,value:n.ID}))])
+async function loadHistory(){ history.value=(await getIP(Number(nodeID.value))).data || [] }
+onMounted(async()=>{nodes.value=(await getEndpoints()).data;await loadHistory()})
+watch(nodeID,loadHistory)
 </script>
 
 <style scoped>

@@ -16,6 +16,7 @@
             </div>
         </div>
 
+        <p v-if="data.length">{{ data[0]?.NodeTag }} · 出口 {{ data[0]?.IP }}</p>
         <div v-for="group in groups" :key="group.label" class="unlock-group">
             <div class="unlock-group-title">{{ group.label }}</div>
             <div class="unlock-grid">
@@ -54,6 +55,8 @@
 </template>
 
 <script setup lang="ts">
+const props=defineProps<{nodeId:number}>()
+const modal=inject<any>('modal')
 import Tip from '@/component/ui/Tip.vue'
 import { getUnlock, fetchUnlock } from '@/api/detect'
 import { formatTime } from '@/util/format'
@@ -157,15 +160,16 @@ function countryFlag(code?: string) {
 async function handleFetch() {
     loading.value = true
     try {
-        const res = await fetchUnlock()
+        const res = await fetchUnlock(props.nodeId)
         data.value = res.data ?? []
+    } catch(err:any) { modal.value?.show('error',err.error)
     } finally {
         loading.value = false
     }
 }
 
 onMounted(async () => {
-    const res = await getUnlock()
+    const res = await getUnlock(props.nodeId)
     data.value = res.data ?? []
 })
 
