@@ -159,3 +159,12 @@ Mihomo 1.19.33 已真实解析测试；URI 回导产生的出站已实际核心�
 - 除已实测 HTTP/SOCKS5/SSH 外，没有各远程出站协议账号，不能把配置检查当真实网络 PASS。
 - Surge 真客户端和 ARM64 实机未提供，分别 NOT VERIFIED；ARM64 编译与产物完整性已通过。
 - 所有已发现的软件缺陷（包括旧唯一索引）已修复并复验；本轮没有留下已知的不可用服务。因外部验收缺项，不宣称所有供应商与所有客户端已经全部验收完成。
+
+## v0.0.1 发布与 HK 升级（2026-11-03）
+
+- 版本号改为标准 `vX.Y.Z`，从 `v0.0.1` 开始；上游原 `v0.0.1` 标签保留为 `upstream-v0.0.1`。未发布的 ef.6 工作流已取消并移除临时标签。
+- Release：https://github.com/yuexuan/SLINX-EF/releases/tag/v0.0.1；Actions：https://github.com/yuexuan/SLINX-EF/actions/runs/41646251129，成功。
+- 源码：`235b951393db182e185c222f331d74a2eb754c6d`。双架构二进制、安装器、BUILDINFO 均通过 SHA256 验证。
+- HK 使用 Release 安装器升级成功；备份 `/etc/slinx/backups/20261103T134416Z-131242`。运行版本 `SLINX-EF v0.0.1 235b951393db182e185c222f331d74a2eb754c6d`；AMD64 SHA256 `8e50a0ed738eb5c3e2bcd587066cafb5a0e297843752cf9f082e53f51b1dd71e` 与 Release 一致。
+- slinx/SSH active，NRestarts=0，面板 HTTP 200，固定核心 1.13.12 配置检查通过。数据库原入站、用户、出口、路由字段与备份一致，仅新增 Shadowsocks 字段；生成的核心 JSON 与升级前完全一致。
+- 当前订阅可读取并解析出 Reality 节点；从 Windows 与服务器临时客户端经该订阅请求 HTTPS 均未通过（SSL EOF；Windows 核心记录 unknown version: 72）。不得宣称端到端连通性验收通过。本次保留现有 SSH 出口与核心配置，没有修改其凭据或路由。
