@@ -74,10 +74,6 @@ func Update(currentVersion string) error {
 
 	util.Info("[update] 开始更新: %s → %s", currentVersion, result.LatestVersion)
 
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
 
  script, err := os.CreateTemp("", "slinx-ef-update-*.sh")
  if err != nil { return err }
@@ -85,7 +81,7 @@ func Update(currentVersion string) error {
  if err != nil { return err }; defer resp.Body.Close()
  if resp.StatusCode != 200 { return fmt.Errorf("installer HTTP %d", resp.StatusCode) }
  _, err = io.Copy(script, resp.Body); script.Close(); if err != nil { return err }
- defer func(){ if err != nil { os.Remove(script.Name()) } }()
+ 
  sums, err := http.Get(getRepo()+"/releases/download/"+result.LatestVersion+"/SHA256SUMS")
  if err != nil { return err }; defer sums.Body.Close()
  if sums.StatusCode != 200 { return fmt.Errorf("checksum HTTP %d", sums.StatusCode) }

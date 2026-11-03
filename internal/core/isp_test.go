@@ -3,6 +3,7 @@ package core
 import (
  "encoding/json"
  "os"
+ "os/exec"
  "path/filepath"
  "testing"
  "github.com/slinxlink/node/internal/database"
@@ -25,6 +26,7 @@ func TestISPConfigFailClosed(t *testing.T) {
    if state=="disabled" { database.DB.Model(&ep).Update("enable",false) }
    if state=="deleted" { database.DB.Delete(&ep) }
    if err:=generateConfig(); err!=nil {t.Fatal(err)}
+   if corePath:=os.Getenv("EF_CORE_PATH"); corePath!="" { if out,err:=exec.Command(corePath,"check","-c",Default.ConfigPath).CombinedOutput(); err!=nil {t.Fatalf("core check: %v %s",err,out)} }
    data,_:=os.ReadFile(Default.ConfigPath)
    var cfg config; if err:=json.Unmarshal(data,&cfg); err!=nil {t.Fatal(err)}
    target:="isp"; if state!="enabled" {target="block"}

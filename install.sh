@@ -70,8 +70,17 @@ systemctl daemon-reload
 systemctl enable --now slinx.service
 sleep 10
 systemctl is-active --quiet slinx.service
+PANEL_PORT=$(sqlite3 "$DIR/data/slinx.db" 'SELECT port FROM config LIMIT 1;')
+PANEL_PATH=$(sqlite3 "$DIR/data/slinx.db" 'SELECT path FROM config LIMIT 1;')
+PANEL_DOMAIN=$(sqlite3 "$DIR/data/slinx.db" 'SELECT domain FROM config LIMIT 1;')
+if [[ -z "$PANEL_DOMAIN" ]]; then
+ curl -fsS --max-time 10 "http://127.0.0.1:$PANEL_PORT$PANEL_PATH" -o /dev/null
+else
+ curl -fsS --max-time 10 --resolve "$PANEL_DOMAIN:$PANEL_PORT:127.0.0.1" "https://$PANEL_DOMAIN:$PANEL_PORT$PANEL_PATH" -o /dev/null
+fi
 [[ ! -f "$DIR/data/sing-box.json" ]] || (cd "$DIR"; bin/sing-box check -c data/sing-box.json)
 trap - ERR
 echo "SLINX-EF $VERSION installed. Backup: $BACKUP"
+echo "Panel port: $PANEL_PORT; path: $PANEL_PATH"
 echo 'Run slinx to view panel URL and manage credentials. Use an SSH tunnel for initial access.'
 echo 'Status: systemctl status slinx; logs: journalctl -u slinx'

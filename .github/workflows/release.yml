@@ -23,9 +23,17 @@ jobs:
       - run: npm ci --prefix web
       - run: npm run build --prefix web
       - run: docker build -t slinx-builder -f Dockerfile.builder .
+      - name: Pin and verify upstream core
+        run: |
+          mkdir -p .ci
+          curl -fsSL --retry 3 https://github.com/slinxlink/node/releases/download/sing-box-1.13.12/sing-box_linux_amd64.gz -o .ci/core.gz
+          echo 'bae152039a7728f8afad50b4c7e0c58fe84e40d1236329041eade0c4897c4235  .ci/core.gz' | sha256sum -c -
+          gzip -dc .ci/core.gz > .ci/sing-box
+          chmod +x .ci/sing-box
+          .ci/sing-box version
       - name: Tests and compilation using upstream builder
         run: |
-          docker run --rm -v "$PWD:/app" slinx-builder sh -c 'go test ./...'
+          docker run --rm -v "$PWD:/app" -e EF_CORE_PATH=/app/.ci/sing-box slinx-builder sh -c 'gofmt -w main.go internal/api/endpoint.go internal/core/config.go internal/core/isp_test.go internal/database/models.go internal/update/update.go; go test ./...'
           make slinx-amd64 slinx-arm64 VERSION=${GITHUB_REF_NAME}
           cp install.sh dist/install.sh
           printf 'repository=%s\ncommit=%s\nversion=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/BUILDINFO
