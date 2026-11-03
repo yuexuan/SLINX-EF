@@ -135,9 +135,7 @@ func ToggleEndpoint(c *gin.Context) {
 	endpoint.Enable = !endpoint.Enable
 	database.DB.Save(&endpoint)
 
-	if !endpoint.Enable {
-		route.CleanupRule("endpoint", endpoint.Tag, "")
-	}
+	// Keep route bindings: disabled targets are blocked during config generation.
 
 	go core.Default.Apply()
 	c.JSON(http.StatusOK, gin.H{"data": endpoint})
