@@ -107,7 +107,6 @@ func (m *Manager) Stop() error {
 		<-waitDone
 	}
 
-	exec.Command("pkill", "-f", "sing-box").Run()
 	service.DisableHop()
 	util.Info("[core] 核心已停止")
 	return nil
