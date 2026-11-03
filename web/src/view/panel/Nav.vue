@@ -16,7 +16,7 @@
                     <i class="icon">chevron_right</i>
                 </button>
             </li>
-            <template v-for="link in links" :key="link.to ?? link.divider">
+            <template v-for="(link, index) in links" :key="link.to ?? `divider-${index}`">
                 <li v-if="link.divider">
                     <div class="divider-notext"></div>
                 </li>
