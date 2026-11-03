@@ -48,6 +48,9 @@ func Init() (bool, error) {
 		return false, err
 	}
 
+	if err := migrateNodeHistory(); err != nil {
+		return false, err
+	}
 	createIndexes()
 	initCore()
 	initSystemLog()
@@ -68,11 +71,27 @@ func Init() (bool, error) {
 func createIndexes() {
 	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_board_user ON board_user(board_id, user_id)")
 	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_endpoint_tag ON endpoint(tag)")
-	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_ip_source_version ON ip(source, ip_version)")
-	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_unlock_ip_version_platform ON unlock(ip, ip_version, platform)")
 	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_back_route_city ON back_route(city)")
 	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_core_single ON core(name)")
 	DB.Exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_cert_domain ON cert(domain)")
+}
+
+// Old releases cached one row per source/platform. Node history is append-only;
+// remove the old uniqueness constraints without deleting any existing results.
+func migrateNodeHistory() error {
+	for _, statement := range []string{
+		"DROP INDEX IF EXISTS idx_ip_source_version",
+		"DROP INDEX IF EXISTS idx_unlock_ip_version_platform",
+		"UPDATE ip SET node_id = 0, node_tag = '服务器直连' WHERE node_id IS NULL",
+		"UPDATE unlock SET node_id = 0, node_tag = '服务器直连' WHERE node_id IS NULL",
+		"CREATE INDEX IF NOT EXISTS idx_ip_node_history ON ip(node_id, source, ip_version, updated_at)",
+		"CREATE INDEX IF NOT EXISTS idx_unlock_node_history ON unlock(node_id, platform, updated_at)",
+	} {
+		if err := DB.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initConfig() (bool, error) {
