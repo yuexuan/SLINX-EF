@@ -89,6 +89,12 @@ func TestNativeProtocolMatrix(t *testing.T) {
 }
 
 func TestNodeGraphAndExport(t *testing.T) {
+	previous := Default.BinPath
+	defer func() { Default.BinPath = previous }()
+	corePath := os.Getenv("EF_CORE_PATH")
+	if corePath != "" {
+		Default.BinPath = corePath
+	}
 	a := database.Endpoint{Enable: true, Tag: "relay", Type: "socks", Server: "127.0.0.1", ServerPort: 1080}
 	b := a
 	b.Tag = "exit"
@@ -145,6 +151,15 @@ func TestNodeGraphAndExport(t *testing.T) {
 		round, err := ImportNodes(uri)
 		if err != nil || len(round) != 1 {
 			t.Fatalf("%s URI roundtrip: %v", ep.Type, err)
+		}
+		if corePath != "" {
+			cfg, err := NodeConfig(round, round[0].Tag)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = CheckConfig(cfg); err != nil {
+				t.Fatalf("%s URI generated invalid core config: %v", ep.Type, err)
+			}
 		}
 		original, _ := json.Marshal(o)
 		rebuilt, _ := BuildOutbound(round[0])

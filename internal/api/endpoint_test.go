@@ -3,9 +3,11 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -150,5 +152,50 @@ func TestNodeImportAtomicity(t *testing.T) {
 	database.DB.Model(&database.Endpoint{}).Count(&count)
 	if count != 1 {
 		t.Fatal("invalid import was persisted")
+	}
+}
+
+func TestLiveImportIntoFreshInstance(t *testing.T) {
+	gateway := os.Getenv("EF_LIVE_PROXY_ADDR")
+	if gateway == "" {
+		t.Skip("real gateway not configured")
+	}
+	host, portText, err := net.SplitHostPort(gateway)
+	if err != nil {
+		t.Fatal(err)
+	}
+	port, _ := strconv.Atoi(portText)
+	first := endpointTestServer(t)
+	status, res := apiRequest(first, "PUT", "/endpoint/save", database.Endpoint{Enable: true, Tag: "fresh-instance", Type: "http", Server: host, ServerPort: port})
+	if status != 200 {
+		t.Fatal(res)
+	}
+	status, res = apiRequest(first, "POST", "/endpoint/export", map[string]any{"tags": []string{"fresh-instance"}, "format": "slinx-ef"})
+	if status != 200 {
+		t.Fatal(res)
+	}
+	content := res["data"].(string)
+	second := endpointTestServer(t) // A new independent SQLite instance; no nodes are copied except via import.
+	status, res = apiRequest(second, "POST", "/endpoint/import", map[string]any{"content": content})
+	if status != 200 {
+		t.Fatal(res)
+	}
+	var node database.Endpoint
+	database.DB.Where("tag = ?", "fresh-instance").First(&node)
+	for i := 0; i < 2; i++ {
+		status, res = apiRequest(second, "POST", "/detect/ip/fetch", map[string]any{"source": "ippure.com", "node_id": node.ID})
+		if status != 200 {
+			t.Fatal(res)
+		}
+		record := res["data"].(map[string]any)
+		if record["NodeID"] != float64(node.ID) || record["IP"] == "" {
+			t.Fatal("wrong node attribution")
+		}
+		t.Logf("REAL imported node public IP: %s", record["IP"])
+	}
+	var count int64
+	database.DB.Model(&database.IP{}).Where("node_id = ?", node.ID).Count(&count)
+	if count != 2 {
+		t.Fatal("repeated node history not appended")
 	}
 }
