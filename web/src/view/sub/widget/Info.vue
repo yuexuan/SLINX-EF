@@ -44,6 +44,7 @@
             :download="uri.download"
         />
         <div class="divider">订阅信息</div>
+        <p class="subscription-hint">传统 Clash 支持普通 Shadowsocks、VMess 与 Trojan；SS2022、VLESS / Reality 等现代协议不会被错误转换。请先添加对应入站并绑定用户。</p>
         <Link
             v-for="url in urls"
             :key="url.value"
@@ -109,8 +110,8 @@ const uris = computed(() =>
 
 const urls = computed(() =>
     (props.data.urls ?? []).map((url: string, i: number) => {
-        const labels = ['SUB', 'CLASH', 'SURGE']
-        const colors = ['green', 'yellow', 'blue']
+        const labels = ['通用订阅', 'Clash 传统', 'Clash 现代（Mihomo）', 'Surge']
+        const colors = ['green', 'yellow', 'blue', 'blue']
         return {
             label: labels[i] ?? 'SUB',
             color: colors[i] ?? 'gray',
@@ -130,6 +131,12 @@ const urls = computed(() =>
     width: min(800px, 90vw);
     background-color: var(--color-bg-dark);
     border-radius: 20px;
+}
+
+.subscription-hint {
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
 }
 
 .mono {

@@ -104,10 +104,16 @@ func vmessClash(uuid string, host string, inbound database.Inbound) string {
 			fmt.Fprintf(&sb, "    servername: %s\n", inbound.ServerName)
 		}
 		if inbound.ALPN != "" {
-			fmt.Fprintf(&sb, "    alpn:\n      - %s\n", inbound.ALPN)
+			fmt.Fprintf(&sb, "    alpn:\n")
+			for _, value := range strings.Split(inbound.ALPN, ",") {
+				fmt.Fprintf(&sb, "      - %s\n", strings.TrimSpace(value))
+			}
 		}
 		if inbound.UTLS != "" {
 			fmt.Fprintf(&sb, "    client-fingerprint: %s\n", inbound.UTLS)
+		}
+		if inbound.Insecure {
+			fmt.Fprintf(&sb, "    skip-cert-verify: true\n")
 		}
 	}
 

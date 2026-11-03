@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -12,10 +13,11 @@ import (
 )
 
 const (
-	RulesetPath         = "data/ruleset/template.json"
-	ClashTemplatePath   = "data/ruleset/clash.yaml"
-	SurgeTemplatePath   = "data/ruleset/surge.conf"
-	SingBoxTemplatePath = "data/ruleset/singbox.json"
+	RulesetPath             = "data/ruleset/template.json"
+	ClashTemplatePath       = "data/ruleset/clash.yaml"
+	ClashLegacyTemplatePath = "data/ruleset/clash-legacy.yaml"
+	SurgeTemplatePath       = "data/ruleset/surge.conf"
+	SingBoxTemplatePath     = "data/ruleset/singbox.json"
 )
 
 type RuleGroup struct {
@@ -126,6 +128,13 @@ func DownloadRuleset() (int, error) {
 
 			var rule string
 			switch {
+			case isIPPrefix(line):
+				prefix, _ := netip.ParsePrefix(line)
+				if prefix.Addr().Is6() {
+					rule = "IP-CIDR6," + line
+				} else {
+					rule = "IP-CIDR," + line
+				}
 			case strings.HasPrefix(line, "IP-CIDR,"), strings.HasPrefix(line, "IP-CIDR6,"):
 				rule = strings.TrimSuffix(line, ",no-resolve")
 			case strings.HasPrefix(line, "DOMAIN,"),
@@ -171,6 +180,25 @@ func DownloadRuleset() (int, error) {
 		return 0, err
 	}
 	return total, os.WriteFile(RulesetPath, data, 0644)
+}
+
+func isIPPrefix(s string) bool {
+	_, err := netip.ParsePrefix(s)
+	return err == nil
+}
+
+func normalizeClashRule(rule string) string {
+	if strings.HasPrefix(rule, "DOMAIN-SUFFIX,") {
+		value := strings.TrimPrefix(rule, "DOMAIN-SUFFIX,")
+		if isIPPrefix(value) {
+			prefix, _ := netip.ParsePrefix(value)
+			if prefix.Addr().Is6() {
+				return "IP-CIDR6," + value
+			}
+			return "IP-CIDR," + value
+		}
+	}
+	return rule
 }
 
 func LoadRuleset() (*Ruleset, error) {

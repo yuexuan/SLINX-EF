@@ -137,6 +137,7 @@ func RegisterRoute(engine *gin.Engine) {
 		private.GET("/generate/token", GenerateToken)
 		private.GET("/generate/uuid", GenerateUUID)
 		private.GET("/generate/password", GeneratePassword)
+		private.GET("/generate/shadowsocks-key", GenerateShadowsocksKey)
 		private.GET("/generate/wireguard-keypair", GenerateWireguardKeyPair)
 		private.GET("/generate/ech-keypair", GenerateECHKeyPair)
 
@@ -155,6 +156,7 @@ func RegisterSubscriptionRoute(engine *gin.Engine, path string, fs embed.FS) {
 			GetSubscription(c, fs)
 		})
 		subscription.GET("/:token/clash", GetClashSubscription)
+		subscription.GET("/:token/clash-legacy", GetClashLegacySubscription)
 		subscription.GET("/:token/surge", GetSurgeSubscription)
 	}
 }

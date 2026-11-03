@@ -1,6 +1,7 @@
 export const protocolMap: Record<string, string> = {
     vless: 'primary',
     vmess: 'green',
+    shadowsocks: 'blue',
     hysteria: 'blue',
     trojan: 'purple',
     tuic: 'orange',

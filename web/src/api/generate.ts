@@ -7,6 +7,8 @@ export const generateRealityKeyPair = () => request('/api/generate/reality-keypa
 export const generateToken = () => request('/api/generate/token')
 export const generateUUID = () => request('/api/generate/uuid')
 export const generatePassword = () => request('/api/generate/password')
+export const generateShadowsocksKey = (method: string) =>
+    request(`/api/generate/shadowsocks-key?method=${encodeURIComponent(method)}`)
 export const generateWireguardKeyPair = () => request('/api/generate/wireguard-keypair')
 export const generateECHKeyPair = (domain: string) =>
     request(`/api/generate/ech-keypair?domain=${domain}`)

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/slinxlink/node/internal/database"
+	"github.com/slinxlink/node/internal/util"
 )
 
 // ── sing-box config structs ──────────────────────────────────────────────────
@@ -65,6 +66,8 @@ type inbounds struct {
 	Heartbeat         string      `json:"heartbeat,omitempty"`
 	TLS               *tls        `json:"tls,omitempty"`
 	Users             []user      `json:"users,omitempty"`
+	Method            string      `json:"method,omitempty"`
+	Password          string      `json:"password,omitempty"`
 }
 
 type transport struct {
@@ -253,9 +256,30 @@ func generateConfig() error {
 			boardUsers = append(boardUsers, d.BoardUsers[b.ID]...)
 		}
 
-		users := buildUsers(ib.Protocol, ibUsers, boardUsers, ib.Flow)
+		var users []user
+		if ib.Protocol == "shadowsocks" {
+			if len(boardUsers) > 0 {
+				return fmt.Errorf("Shadowsocks 入站 %s 暂不支持 SSPanel 外部用户绑定，请改用本地用户", ib.Name)
+			}
+			for _, u := range ibUsers {
+				if u.Enable {
+					users = append(users, user{Name: u.Name, Password: util.ShadowsocksUserPassword(ib.ShadowsocksMethod, ib.ShadowsocksPassword, u.Token)})
+				}
+			}
+		} else {
+			users = buildUsers(ib.Protocol, ibUsers, boardUsers, ib.Flow)
+		}
+		if ib.Protocol == "shadowsocks" && len(users) == 0 {
+			// An empty users list would activate the inbound in single-key mode.
+			// Only listen after a local user has been associated explicitly.
+			util.Warn("[core] Shadowsocks 入站 %s 尚未关联启用的本地用户，暂不监听", ib.Name)
+			continue
+		}
 		ic, err := buildInbound(ib, users)
 		if err != nil {
+			if ib.Protocol == "shadowsocks" {
+				return fmt.Errorf("入站 %s (%d): %w", ib.Name, ib.Port, err)
+			}
 			continue
 		}
 
@@ -326,8 +350,24 @@ func buildInbound(ib database.Inbound, users []user) (inbounds, error) {
 		return buildTuic(ib, users)
 	case "anytls":
 		return buildAnytls(ib, users)
+	case "shadowsocks":
+		return buildShadowsocks(ib, users)
 	}
 	return inbounds{}, fmt.Errorf("unsupported protocol: %s", ib.Protocol)
+}
+
+func buildShadowsocks(ib database.Inbound, users []user) (inbounds, error) {
+	if err := util.ValidateShadowsocksPassword(ib.ShadowsocksMethod, ib.ShadowsocksPassword); err != nil {
+		return inbounds{}, err
+	}
+	if len(users) == 0 {
+		return inbounds{}, fmt.Errorf("Shadowsocks 入站至少关联一个启用的本地用户")
+	}
+	ic := buildBase(ib)
+	ic.Method = ib.ShadowsocksMethod
+	ic.Password = ib.ShadowsocksPassword
+	ic.Users = users
+	return ic, nil
 }
 
 func buildVless(ib database.Inbound, users []user) (inbounds, error) {

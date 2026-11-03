@@ -56,6 +56,15 @@ func GenerateUUID(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"uuid": uuid})
 }
 
+func GenerateShadowsocksKey(c *gin.Context) {
+	password, err := util.GenerateShadowsocksPassword(c.Query("method"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"password": password})
+}
+
 func GeneratePassword(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"password": util.GenerateString(16)})
 }

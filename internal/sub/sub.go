@@ -51,6 +51,69 @@ func Clash(token string) (string, string) {
 	return tpl.RenderClash(proxies), name
 }
 
+// ClashLegacy only emits proxy protocols supported by original Clash cores.
+// Unsupported modern inbounds are reported instead of silently converting them.
+func ClashLegacy(token string) (string, string, []string) {
+	user, inbounds := getUser(token)
+	if user == nil {
+		return "", "", nil
+	}
+
+	host := getHost()
+	var proxies, skipped []string
+	for _, inbound := range inbounds {
+		if reason := legacyUnsupportedReason(inbound); reason != "" {
+			skipped = append(skipped, inbound.Name+" ("+reason+")")
+			continue
+		}
+		compat := inbound
+		compat.UTLS = "" // original Clash does not implement uTLS fingerprinting
+		if proxy := dispatchClash(*user, compat, host); proxy != "" {
+			proxies = append(proxies, proxy)
+		}
+	}
+
+	name := util.SanitizeFileName(user.Name)
+	if name == "" {
+		name = "SLINX"
+	}
+	if len(proxies) == 0 {
+		return "", name, skipped
+	}
+	return tpl.RenderClashLegacy(proxies), name, skipped
+}
+
+func legacyUnsupportedReason(inbound database.Inbound) string {
+	if inbound.Protocol == "shadowsocks" {
+		if strings.HasPrefix(inbound.ShadowsocksMethod, "2022-") {
+			return "传统 Clash 不支持 Shadowsocks 2022"
+		}
+		if inbound.ShadowsocksMethod == "xchacha20-ietf-poly1305" {
+			return "传统 Clash 兼容模式不提供 XChaCha20，请改用 AES-GCM 或 ChaCha20-IETF"
+		}
+		if err := util.ValidateShadowsocksPassword(inbound.ShadowsocksMethod, inbound.ShadowsocksPassword); err != nil {
+			return err.Error()
+		}
+		return ""
+	}
+	if inbound.Protocol != "vmess" && inbound.Protocol != "trojan" {
+		return "不支持协议: " + inbound.Protocol
+	}
+	if inbound.TLSType == "reality" || inbound.ECHEnabled {
+		return "不支持 Reality/ECH"
+	}
+	if inbound.Protocol == "trojan" && inbound.TLSType != "tls" {
+		return "Trojan 需要 TLS"
+	}
+	if inbound.Protocol == "vmess" && inbound.TLSType != "tls" && inbound.TLSType != "none" && inbound.TLSType != "" {
+		return "不支持 TLS 配置"
+	}
+	if inbound.Transport != "raw" && inbound.Transport != "websocket" && inbound.Transport != "" {
+		return "不支持传输类型"
+	}
+	return ""
+}
+
 func Surge(token string) (string, string) {
 	user, inbounds := getUser(token)
 	if user == nil {
@@ -138,6 +201,7 @@ func Url(token string) []string {
 
 	return []string{
 		sub,
+		sub + "/clash-legacy",
 		sub + "/clash",
 		sub + "/surge",
 	}
@@ -178,6 +242,8 @@ func dispatch(user database.User, inbound database.Inbound, host string) string 
 		return tuic(user.UUID, user.Password, host, inbound)
 	case "anytls":
 		return anytls(user.Password, host, inbound)
+	case "shadowsocks":
+		return shadowsocksURI(user, host, inbound)
 	default:
 		return ""
 	}
@@ -197,6 +263,8 @@ func dispatchClash(user database.User, inbound database.Inbound, host string) st
 		return tuicClash(user.UUID, user.Password, host, inbound)
 	case "anytls":
 		return anytlsClash(user.Password, host, inbound)
+	case "shadowsocks":
+		return shadowsocksClash(user, host, inbound)
 	default:
 		return ""
 	}
@@ -214,6 +282,8 @@ func dispatchSurge(user database.User, inbound database.Inbound, host string) st
 		return tuicSurge(user.UUID, user.Password, host, inbound)
 	case "anytls":
 		return anytlsSurge(user.Password, host, inbound)
+	case "shadowsocks":
+		return shadowsocksSurge(user, host, inbound)
 	default:
 		return ""
 	}
@@ -233,6 +303,8 @@ func dispatchSingBox(user database.User, inbound database.Inbound, host string) 
 		return tuicSingBox(user.UUID, user.Password, host, inbound)
 	case "anytls":
 		return anytlsSingBox(user.Password, host, inbound)
+	case "shadowsocks":
+		return shadowsocksSingBox(user, host, inbound)
 	default:
 		return ""
 	}

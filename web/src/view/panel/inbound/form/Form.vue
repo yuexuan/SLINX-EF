@@ -17,6 +17,7 @@
                     :options="[
                         { label: 'VLESS', value: 'vless' },
                         { label: 'VMess', value: 'vmess' },
+                        { label: 'Shadowsocks', value: 'shadowsocks' },
                         { label: 'Hysteria', value: 'hysteria' },
                         { label: 'Trojan', value: 'trojan' },
                         { label: 'TUIC', value: 'tuic' },
@@ -34,6 +35,36 @@
                     placeholder="1 - 65535"
                 />
             </div>
+        </Section>
+
+        <!-- Shadowsocks：普通 AEAD 与 2022 共用协议，按 method 切换 -->
+        <Section v-if="form.Protocol === 'shadowsocks'" title="Shadowsocks 配置">
+            <div class="form-row">
+                <span class="form-label">版本</span>
+                <RadioGroup
+                    :model-value="isShadowsocks2022 ? '2022' : 'legacy'"
+                    :options="[
+                        { label: '普通 SS', value: 'legacy' },
+                        { label: 'SS2022', value: '2022' },
+                    ]"
+                    @update:model-value="changeShadowsocksVersion"
+                />
+            </div>
+            <div class="form-row half">
+                <span class="form-label">加密方式</span>
+                <Select
+                    :model-value="form.ShadowsocksMethod"
+                    :options="isShadowsocks2022 ? ss2022Methods : ssLegacyMethods"
+                    @update:model-value="changeShadowsocksMethod"
+                />
+            </div>
+            <div class="form-row">
+                <span class="form-label">服务端密钥</span>
+                <RefreshBtn @click="genShadowsocksKey">
+                    <Input v-model="form.ShadowsocksPassword" placeholder="点击右侧刷新生成密钥" />
+                </RefreshBtn>
+            </div>
+            <p class="ss-hint">自动为关联的本地用户派生独立密码；2022 使用 Base64 密钥。更换服务端密钥会使该入站的旧订阅密码失效。保存后请在用户配置中关联此入站。</p>
         </Section>
 
         <!-- 传输 -->
@@ -270,7 +301,7 @@
         </Section>
 
         <!-- 安全 -->
-        <Section title="安全">
+        <Section v-if="form.Protocol !== 'shadowsocks'" title="安全">
             <div class="form-row">
                 <span class="form-label">安全</span>
                 <RadioGroup
@@ -488,6 +519,7 @@ import {
     generateRealityKeyPair,
     generateShortIDs,
     generateECHKeyPair,
+    generateShadowsocksKey,
 } from '@/api/generate'
 import { getCert } from '@/api/cert'
 
@@ -499,6 +531,35 @@ const form = defineModel<any>({
         Port: 0,
     }),
 })
+
+const ssLegacyMethods = [
+    { label: 'aes-128-gcm', value: 'aes-128-gcm' },
+    { label: 'aes-256-gcm', value: 'aes-256-gcm' },
+    { label: 'chacha20-ietf-poly1305', value: 'chacha20-ietf-poly1305' },
+    { label: 'xchacha20-ietf-poly1305', value: 'xchacha20-ietf-poly1305' },
+]
+const ss2022Methods = [
+    { label: '2022-blake3-aes-128-gcm', value: '2022-blake3-aes-128-gcm' },
+    { label: '2022-blake3-aes-256-gcm', value: '2022-blake3-aes-256-gcm' },
+]
+const isShadowsocks2022 = computed(() => form.value.ShadowsocksMethod?.startsWith('2022-'))
+
+async function changeShadowsocksVersion(version: string) {
+    await changeShadowsocksMethod(version === '2022' ? '2022-blake3-aes-128-gcm' : 'aes-128-gcm')
+}
+
+async function changeShadowsocksMethod(method: string | number) {
+    form.value.ShadowsocksMethod = String(method)
+    await genShadowsocksKey()
+}
+
+async function genShadowsocksKey() {
+    const method = form.value.ShadowsocksMethod || 'aes-128-gcm'
+    const res = await generateShadowsocksKey(method)
+    if (method === form.value.ShadowsocksMethod) {
+        form.value.ShadowsocksPassword = res.password
+    }
+}
 
 const tlsVersions = [
     { label: '1.0', value: '1.0' },
@@ -531,6 +592,12 @@ onMounted(async () => {
 watch(
     () => form.value.Protocol,
     (val) => {
+        if (val === 'shadowsocks') {
+            form.value.TLSType = 'none'
+            form.value.Transport = 'raw'
+            if (!form.value.ShadowsocksMethod) form.value.ShadowsocksMethod = 'aes-128-gcm'
+            if (!form.value.ShadowsocksPassword) void genShadowsocksKey()
+        }
         if (val === 'hysteria' || val === 'trojan' || val === 'tuic' || val === 'anytls') {
             form.value.TLSType = 'tls'
             if (val === 'hysteria' || val === 'tuic') {
@@ -585,6 +652,13 @@ async function genECHKeyPair() {
 </script>
 
 <style scoped>
+.ss-hint {
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    padding: 0 20px 8px;
+}
+
 .inbound-form {
     display: flex;
     flex-direction: column;

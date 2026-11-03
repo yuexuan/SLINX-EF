@@ -57,6 +57,25 @@ func GetClashSubscription(c *gin.Context) {
 	c.Data(http.StatusOK, "text/yaml; charset=utf-8", []byte(result))
 }
 
+func GetClashLegacySubscription(c *gin.Context) {
+	result, name, skipped := sub.ClashLegacy(c.Param("token"))
+	if result == "" {
+		if len(skipped) > 0 {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{
+				"error":       "当前用户没有传统 Clash 支持的入站，请新增 VMess/Trojan 入站并关联该用户",
+				"unsupported": skipped,
+			})
+			return
+		}
+		c.JSON(http.StatusNotFound, gin.H{"error": "无效的订阅链接或无可用节点"})
+		return
+	}
+	c.Header("Content-Disposition",
+		fmt.Sprintf("attachment; filename*=UTF-8''%s-legacy.yaml", url.QueryEscape(name)))
+	c.Header("Profile-Update-Interval", "24")
+	c.Data(http.StatusOK, "text/yaml; charset=utf-8", []byte(result))
+}
+
 func GetSurgeSubscription(c *gin.Context) {
 	token := c.Param("token")
 	result, name := sub.Surge(token)

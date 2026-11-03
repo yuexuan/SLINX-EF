@@ -34,6 +34,17 @@ func SaveInbound(c *gin.Context) {
 		return
 	}
 
+	if ib.Protocol == "shadowsocks" {
+		if err := util.ValidateShadowsocksPassword(ib.ShadowsocksMethod, ib.ShadowsocksPassword); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if ib.TLSType != "" && ib.TLSType != "none" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Shadowsocks 不使用 TLS/Reality；请选择安全：无"})
+			return
+		}
+	}
+
 	if ib.ObfsType != "" {
 		if ib.ObfsPassword == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "请填写混淆密码"})
@@ -86,6 +97,15 @@ func SaveInbound(c *gin.Context) {
 				return
 			}
 		}
+	}
+
+	if ib.Protocol == "vless" && ib.Flow != "" && ib.Transport == "websocket" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "VLESS 的 XTLS Vision 不支持 WebSocket，请改为 RAW/TCP 或清空 Flow"})
+		return
+	}
+	if ib.TLSType == "reality" && ib.Protocol != "vless" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Reality 入站仅支持 VLESS"})
+		return
 	}
 
 	if ib.TLSType == "reality" {

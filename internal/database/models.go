@@ -166,6 +166,9 @@ type Inbound struct {
 	RealityPrivateKey  string // 生成配置用
 	RealityPublicKey   string // 下发订阅用
 	Flow               string // xtls-rprx-vision，VLESS+Reality 专用，下发给客户端
+
+	ShadowsocksMethod   string // Shadowsocks 经典 AEAD 或 AEAD-2022 加密方式
+	ShadowsocksPassword string // 入站服务端密钥，与每个用户的派生密码区分
 }
 
 func (Inbound) TableName() string { return "inbound" }

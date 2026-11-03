@@ -25,6 +25,20 @@ func GenerateClash() {
 		return
 	}
 
+	modern := renderClashTemplate(rs, false)
+	legacy := renderClashTemplate(rs, true)
+	if err := os.WriteFile(ClashTemplatePath, []byte(modern), 0644); err != nil {
+		util.Error("[clash] 现代模板写入失败: %v", err)
+		return
+	}
+	if err := os.WriteFile(ClashLegacyTemplatePath, []byte(legacy), 0644); err != nil {
+		util.Error("[clash] 传统模板写入失败: %v", err)
+		return
+	}
+	util.Info("[clash] 传统和现代模板已更新")
+}
+
+func renderClashTemplate(rs *Ruleset, legacy bool) string {
 	var sb strings.Builder
 	sb.WriteString(`# SLINX Node · Clash 订阅
 mixed-port: 7890
@@ -82,8 +96,14 @@ rules:
 
 	for _, g := range rs.Groups {
 		if g.Name == "_final" {
-			fmt.Fprintf(&sb, "  - GEOIP,LAN,🎯 直连,no-resolve\n")
-			fmt.Fprintf(&sb, "  - GEOSITE,CN,🎯 直连\n")
+			if legacy {
+				for _, cidr := range []string{"127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"} {
+					fmt.Fprintf(&sb, "  - IP-CIDR,%s,🎯 直连,no-resolve\n", cidr)
+				}
+			} else {
+				fmt.Fprintf(&sb, "  - GEOIP,LAN,🎯 直连,no-resolve\n")
+				fmt.Fprintf(&sb, "  - GEOSITE,CN,🎯 直连\n")
+			}
 			fmt.Fprintf(&sb, "  - GEOIP,CN,🎯 直连,no-resolve\n")
 			fmt.Fprintf(&sb, "  - MATCH,🐟 默认\n")
 			continue
@@ -93,6 +113,7 @@ rules:
 			name = cn
 		}
 		for _, rule := range g.Rules {
+			rule = normalizeClashRule(rule)
 			if strings.HasPrefix(rule, "IP-CIDR") {
 				fmt.Fprintf(&sb, "  - %s,%s,no-resolve\n", rule, name)
 			} else {
@@ -101,15 +122,19 @@ rules:
 		}
 	}
 
-	if err := os.WriteFile(ClashTemplatePath, []byte(sb.String()), 0644); err != nil {
-		util.Error("[clash] 模板写入失败: %v", err)
-		return
-	}
-	util.Info("[clash] 模板已更新")
+	return sb.String()
 }
 
 func RenderClash(proxies []string) string {
-	data, err := os.ReadFile(ClashTemplatePath)
+	return renderClash(proxies, ClashTemplatePath)
+}
+
+func RenderClashLegacy(proxies []string) string {
+	return renderClash(proxies, ClashLegacyTemplatePath)
+}
+
+func renderClash(proxies []string, path string) string {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		util.Error("[clash] 读取模板失败: %v", err)
 		return ""

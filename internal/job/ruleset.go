@@ -35,13 +35,14 @@ func RulesetRefresh() {
 func checkRulesetFiles() {
 	_, errJson := os.Stat(template.RulesetPath)
 	_, errClash := os.Stat(template.ClashTemplatePath)
+	_, errLegacy := os.Stat(template.ClashLegacyTemplatePath)
 	_, errSurge := os.Stat(template.SurgeTemplatePath)
 	_, errSingBox := os.Stat(template.SingBoxTemplatePath)
 
 	if os.IsNotExist(errJson) {
 		RefreshRuleset()
 	} else {
-		if os.IsNotExist(errClash) {
+		if os.IsNotExist(errClash) || os.IsNotExist(errLegacy) {
 			template.GenerateClash()
 		}
 		if os.IsNotExist(errSurge) {

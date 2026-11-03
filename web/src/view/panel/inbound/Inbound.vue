@@ -2,10 +2,17 @@
     <main>
         <div class="page">
             <div class="body">
-                <button class="add-btn" @click="openCreate">
-                    <i class="icon">add</i>
-                    添加入站
-                </button>
+                <div class="create-actions">
+                    <button class="add-btn" @click="openCreate()">
+                        <i class="icon">add</i>
+                        添加入站
+                    </button>
+                    <button class="add-btn" @click="openCreate('legacy')">
+                        <i class="icon">add</i>
+                        传统 Clash 入站
+                    </button>
+                </div>
+                <p class="compat-hint">传统 Clash 可使用 VMess / TCP 或普通 Shadowsocks；现代客户端还可选 SS2022。保存后请在用户配置中关联该入站。</p>
 
                 <List :headers="['ID', '备注', '端口', '协议', '启用', '操作']">
                     <tr v-for="ib in inbounds" :key="ib.ID">
@@ -14,10 +21,12 @@
                         <td>{{ ib.Port }}</td>
                         <td>
                             <div class="tags">
-                                <span class="tag primary">{{ ib.Protocol }}</span>
+                                <span class="tag primary">{{ ib.Protocol === 'shadowsocks' ? (ib.ShadowsocksMethod?.startsWith('2022-') ? 'SS2022' : 'Shadowsocks') : ib.Protocol }}</span>
                                 <span class="tag green">
                                     {{
-                                        ib.Protocol === 'hysteria' || ib.Protocol === 'tuic'
+                                        ib.Protocol === 'shadowsocks'
+                                            ? 'TCP+UDP'
+                                            : ib.Protocol === 'hysteria' || ib.Protocol === 'tuic'
                                             ? 'UDP'
                                             : ib.Transport === 'websocket'
                                               ? 'WS'
@@ -134,6 +143,8 @@ const baseInbound = () => ({
     RealityPublicKey: '',
     RealityPrivateKey: '',
     Flow: 'xtls-rprx-vision',
+    ShadowsocksMethod: 'aes-128-gcm',
+    ShadowsocksPassword: '',
 })
 
 const generatedDefaults = ref<any>({})
@@ -175,10 +186,20 @@ async function remove(id: number) {
 // ── Drawer 操作 ────────────────────────────────────────────
 const drawerTitle = ref('添加入站')
 
-async function openCreate() {
-    drawerTitle.value = '添加入站'
-    defaultInbound.value = baseInbound()
+async function openCreate(profile: 'legacy' | 'modern' = 'modern') {
+    const isLegacy = profile === 'legacy'
+    drawerTitle.value = isLegacy ? '添加传统 Clash 入站' : '添加入站'
+    defaultInbound.value = {
+        ...baseInbound(),
+        ...(isLegacy ? { Name: 'Legacy-VMess', Protocol: 'vmess', Flow: '', UTLS: '' } : {}),
+    }
     showDrawer.value = true
+
+    if (isLegacy) {
+        const portRes = await generatePort()
+        defaultInbound.value = { ...defaultInbound.value, Port: portRes.port }
+        return
+    }
 
     const [portRes, targetRes, keyPairRes, shortIDsRes, certsRes] = await Promise.all([
         generatePort(),
@@ -239,3 +260,17 @@ async function handleSave() {
     }
 }
 </script>
+
+<style scoped>
+.create-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+.compat-hint {
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    margin: 10px 0;
+}
+</style>
