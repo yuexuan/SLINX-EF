@@ -193,7 +193,7 @@ func (m *Manager) watch(cmd *exec.Cmd, waitDone chan struct{}) {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.running {
+	if !m.running || m.cmd != cmd {
 		return
 	}
 	m.running = false

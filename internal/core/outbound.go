@@ -146,6 +146,15 @@ func ValidateGraph(nodes []database.Endpoint) error {
 			if _, ok := byTag[n.Detour]; !ok {
 				return fmt.Errorf("%s 缺少中继 %s", tag, n.Detour)
 			}
+			parent := byTag[n.Detour]
+			if n.Type == "hysteria2" || n.Type == "tuic" || n.Type == "wireguard" {
+				var options map[string]any
+				json.Unmarshal([]byte(parent.Options), &options)
+				tcpOnly := parent.Type == "http" || parent.Type == "ssh" || options["network"] == "tcp" || (parent.Type == "socks" && (options["version"] == "4" || options["version"] == "4a"))
+				if tcpOnly {
+					return fmt.Errorf("%s 需要 UDP 中继，%s 仅支持 TCP", n.Tag, parent.Tag)
+				}
+			}
 			if err := visit(n.Detour); err != nil {
 				return err
 			}

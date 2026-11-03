@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -208,4 +209,46 @@ func TestLiveManagedEgress(t *testing.T) {
 		t.Fatalf("bad host pin unexpectedly connected: %s", ip)
 	}
 	t.Log("wrong SSH host pin: connection failed without direct fallback")
+}
+
+func TestLiveRemoteSSH(t *testing.T) {
+	path := os.Getenv("EF_LIVE_SSH_CONFIG")
+	if path == "" {
+		t.Skip("remote SSH credentials not configured")
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var node database.Endpoint
+	if err = json.Unmarshal(content, &node); err != nil {
+		t.Fatal(err)
+	}
+	previous := Default.BinPath
+	Default.BinPath = os.Getenv("EF_CORE_PATH")
+	defer func() { Default.BinPath = previous }()
+	cfg, err := NodeConfig([]database.Endpoint{node}, node.Tag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = CheckConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(t.TempDir(), "remote-ssh.log")
+	cfg["log"] = map[string]any{"level": "debug", "output": logPath}
+	client, close, err := ProbeClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer close()
+	ip, err := service.NewDetector(client, node.ID, node.Tag).PublicIP()
+	if err != nil {
+		logs, _ := os.ReadFile(logPath)
+		t.Log(string(logs))
+		t.Fatal(err)
+	}
+	t.Logf("REAL remote SSH HTTPS public egress: %s", ip)
+	if expected := os.Getenv("EF_LIVE_SSH_EXPECTED_IP"); expected != "" && ip != expected {
+		t.Fatalf("unexpected SSH egress %s", ip)
+	}
 }

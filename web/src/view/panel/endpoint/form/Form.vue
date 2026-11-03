@@ -21,10 +21,11 @@
             <div v-for="field in fields[form.Type] || []" :key="field" class="form-row">
                 <span class="form-label">{{ field }}</span><Input :model-value="options[field] ?? ''" @update:model-value="setOption(field, $event)" />
             </div>
+            <p v-if="form.Type === 'ssh'">Host Key 应与协商算法匹配，例如 host_key_algorithms 使用 ssh-ed25519。留空 Host Key 时不校验服务器身份。</p>
             <div class="form-row" v-if="form.Type === 'ssh'"><span class="form-label">私钥 PEM</span><textarea :value="options.private_key || ''" @input="setOption('private_key', ($event.target as HTMLTextAreaElement).value)" /></div>
             <p>参数遵循 sing-box 1.13.12。HTTP/SSH 仅 TCP；SOCKS4/4a 不支持 UDP。TLS、Reality、传输层及 UDP 参数可在下方 JSON 中编辑，保存时由核心检查。</p>
             <label>协议 Options JSON（含凭据，请妥善保管）<textarea v-model="form.Options" spellcheck="false" rows="10" /></label>
-            <button type="button" @click="setDefaults">填入当前协议示例</button>
+            <button class="action-btn" type="button" @click="setDefaults">填入当前协议示例</button>
         </template>
         <template v-if="['socks','http'].includes(form.Type)">
             <label>动态策略 <Select v-model="dynamicMode" :options="['fixed','session','api'].map(value => ({label:value,value}))" /></label>
@@ -32,6 +33,7 @@
             <textarea v-model="form.Dynamic" spellcheck="false" rows="8" aria-label="动态代理策略 JSON" />
         </template>
         <template v-if="form.Type === 'wireguard'">
+            <label>WireGuard Options（system/name/listen_port/pre_shared_key/persistent_keepalive_interval）<textarea v-model="form.Options" spellcheck="false" rows="4" /></label>
             <div class="form-row">
                 <span class="form-label">本地 IPv4 地址</span>
                 <Input v-model="form.Address[0]" placeholder="0.0.0.0/32" />
@@ -126,7 +128,7 @@ const form = defineModel<any>({
 
 const protocols = ['socks','http','ssh','shadowsocks','vless','vmess','trojan','hysteria2','tuic','anytls','wireguard','custom']
 const fields: Record<string, string[]> = {
-    socks: ['version'], ssh: ['private_key_passphrase','host_key'], shadowsocks: ['method'],
+    socks: ['version'], ssh: ['private_key_passphrase','host_key','host_key_algorithms'], shadowsocks: ['method'],
     vless: ['uuid','flow'], vmess: ['uuid','security'], tuic: ['uuid','congestion_control','udp_relay_mode'],
 }
 const options = computed(() => { try { return JSON.parse(form.value.Options || '{}') } catch { return {} } })

@@ -8,6 +8,7 @@ import (
 	"github.com/slinxlink/node/internal/util"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 // GET /detect/ip 读库返回
@@ -40,6 +41,7 @@ func FetchIP(c *gin.Context) {
 	defer close()
 	record, err := detector.FetchIPInfo(req.Source)
 	if err != nil {
+		database.DB.Create(&database.NodeEvent{NodeID: req.NodeID, Kind: "detection", Status: "检测失败（未回退直连）", CreatedAt: time.Now()})
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
@@ -71,6 +73,7 @@ func FetchUnlock(c *gin.Context) {
 	defer close()
 	records, err := detector.FetchUnlockInfo()
 	if err != nil {
+		database.DB.Create(&database.NodeEvent{NodeID: req.NodeID, Kind: "detection", Status: "检测失败（未回退直连）", CreatedAt: time.Now()})
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

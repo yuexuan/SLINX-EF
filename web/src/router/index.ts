@@ -38,7 +38,7 @@ const router = createRouter({
                 {
                     path: 'endpoint',
                     component: () => import('../view/panel/endpoint/Endpoint.vue'),
-                    meta: { title: 'SLINX-EF · 端点管理' },
+                    meta: { title: 'SLINX-EF · 节点管理' },
                 },
                 {
                     path: 'board',

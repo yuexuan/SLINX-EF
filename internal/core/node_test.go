@@ -1,6 +1,8 @@
 package core
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -149,6 +151,47 @@ func TestNodeGraphAndExport(t *testing.T) {
 		actual, _ := json.Marshal(rebuilt)
 		if !strings.Contains(string(actual), ep.Server) {
 			t.Fatalf("URI dropped server: %s -> %s", original, actual)
+		}
+	}
+}
+
+func TestWireGuardNativeRoundtrip(t *testing.T) {
+	key := base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32))
+	ep := database.Endpoint{Enable: true, Tag: "wg", Type: "wireguard", Address: `["172.16.0.2/32","fd00::2/128"]`, PrivateKey: key, PeerAddress: "127.0.0.1", PeerPort: 51820, PeerPublicKey: key, AllowedIPs: "0.0.0.0/0,::/0", Reserved: `[1,2,3]`, MTU: 1408, Options: `{"persistent_keepalive_interval":25}`}
+	previous := Default.BinPath
+	defer func() { Default.BinPath = previous }()
+	binary := os.Getenv("EF_CORE_PATH")
+	if binary != "" {
+		Default.BinPath = binary
+		cfg, err := NodeConfig([]database.Endpoint{ep}, ep.Tag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = CheckConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+		content, err := ExportNodes([]database.Endpoint{ep}, []string{ep.Tag}, "sing-box")
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := ImportNodes(content)
+		if err != nil || len(got) != 1 {
+			t.Fatal(err)
+		}
+		if !strings.Contains(got[0].Options, "25") {
+			t.Fatal("keepalive lost")
+		}
+	}
+	if binary := os.Getenv("EF_MIHOMO_PATH"); binary != "" {
+		content, err := ExportNodes([]database.Endpoint{ep}, []string{ep.Tag}, "mihomo")
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := t.TempDir()
+		path := filepath.Join(dir, "config.yaml")
+		os.WriteFile(path, []byte(content), 0600)
+		if out, err := exec.Command(binary, "-t", "-d", dir, "-f", path).CombinedOutput(); err != nil {
+			t.Fatalf("WireGuard Mihomo: %s", out)
 		}
 	}
 }

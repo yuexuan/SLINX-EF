@@ -16,7 +16,7 @@
                 </button>
             </div>
         </div>
-        <p>{{ ipData?.NodeTag || '服务器直连' }} · 数据来源 {{ ipData?.Source || source }}（类型为供应商判断）</p>
+        <p>{{ ipData?.NodeTag || (props.nodeId ? '所选节点（此来源尚无结果）' : '服务器直连') }} · 数据来源 {{ ipData?.Source || source }}（类型为供应商判断） · {{ ipData?.LatencyMS || 0 }} ms</p>
         <div class="ip-detect-body">
             <div class="ip-detect-item">
                 <div class="ip-detect-label">IP 地址</div>
@@ -126,7 +126,8 @@ onMounted(async () => {
     if (res.data?.length) {
         allData.value = res.data
         ipData.value =
-            res.data.find((r: any) => r.Source === source.value && r.IPVersion === 'v4') ?? null
+            res.data.find((r: any) => r.Source === source.value && r.IPVersion === 'v4') ?? res.data[0]
+        if (ipData.value?.Source) source.value = ipData.value.Source
     }
 })
 

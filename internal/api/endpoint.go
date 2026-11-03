@@ -36,6 +36,10 @@ func SaveEndpoint(c *gin.Context) {
 		return
 	}
 
+	saveEndpoint(c, endpoint)
+}
+
+func saveEndpoint(c *gin.Context, endpoint database.Endpoint) {
 	endpoint.Tag = strings.TrimSpace(endpoint.Tag)
 	policy, policyErr := service.ParseDynamic(endpoint)
 	if policyErr != nil {
@@ -276,17 +280,7 @@ func CreateWarpEndpoint(c *gin.Context) {
 	endpoint.PeerPort = req.PeerPort
 	endpoint.PeerPublicKey = req.PeerPublicKey
 
-	if err := database.DB.Save(&endpoint).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	util.Info("[endpoint] 创建/更新 WARP 端点")
-	if err := core.Default.Apply(); err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"data": endpoint})
+	saveEndpoint(c, endpoint)
 }
 
 func GetEndpoint(c *gin.Context) {

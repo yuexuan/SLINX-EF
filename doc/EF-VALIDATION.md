@@ -66,3 +66,41 @@ bash <(curl -fsSL https://raw.githubusercontent.com/yuexuan/SLINX-EF/main/instal
 
 补充复验：再次执行公开一键脚本成功，版本保持 ef.3，配置快照一致，公网 Reality 请求仍返回 38.55.195.102。重复安装备份：`/etc/slinx/backups/20261103T053855Z-114340`；最终 systemd MainPID=114477，active/running。
 
+
+
+## Active Node Extension 本轮验收（2026-11-03，发布前）
+
+本节为本轮新增能力的证据；上方 ef.3 的历史验收不代表本轮新代码已经部署。
+
+| 阶段 | 实现及可获得条件下验收 | 外部条件 |
+| --- | --- | --- |
+| P0 | PASS：Header 唯一主题入口；暗/亮切换、刷新、390px 窄屏 Chrome 实测 | 无 |
+| P1 | PASS：SOCKS4/4a/5、HTTP/HTTPS、SSH、SS、VLESS、VMess、Trojan、Hysteria2、TUIC、AnyTLS、自定义受支持 JSON、WireGuard；固定 1.13.12 实际 check | SS/VLESS/VMess/Trojan/QUIC/AnyTLS/WireGuard 供应商真实连接 NOT VERIFIED |
+| P2 | PASS：循环/缺失依赖拒绝、禁用阻断、删除中继禁用依赖；受控 HTTP→SSH 链路和导出再导入公网连接 | 真实 ISP 中继链缺少凭据，NOT VERIFIED |
+| P3 | PASS：固定/会话/API 模式、模板、有效期、手动轮换、明确网关连接失败按需轮换；受控提供商运行验收 | 真实住宅/ISP 会话与 API 换 IP 缺少账号，NOT VERIFIED |
+| P4 | PASS：实际节点出站 IP、ASN、地区与 16 项解锁结果关联；不可达不回退，节点历史隔离；MTR 保留服务器级 | 各供应商 IP 类型属于来源判断 |
+| P5 | PASS：sing-box / SLINX-EF 依赖导出导入、Mihomo 真客户端检查、常见 URI、旧订阅隔离 | Surge 真客户端 NOT VERIFIED，当前 Windows 无对应客户端 |
+| P6 | 前端构建/类型检查、Go、核心矩阵与真实网络已通过；最终 Release/部署待下方发布记录 | 供应商缺项如上 |
+
+### 命令与真实结果
+
+- `npm run build --prefix web`：类型检查和 Vite 构建 PASS。
+- 本机 `go test -tags nomsgpack ./...`（CGO + GCC，EF_CORE_PATH 指向本机完整核心）：PASS。API 生命周期、失败阻断、循环、原子导入及订阅凭据隔离纳入测试。
+- Windows 测试辅助核心由官方 `github.com/sagernet/sing-box/cmd/sing-box@v1.13.12` 构建，`go version -m` 确认模块版本与校验和；启用 v2ray_api / gvisor / quic / wireguard / utls / clash_api。正式服务器仍使用既有上游固定 Linux 1.13.12 包，未替换核心版本。
+- 官方 Windows 1.13.12 标准包缺少 v2ray_api，不能用于检查面板完整配置；初次完整检查明确失败后改用上述同版本完整构建。WireGuard 还需 with_gvisor，已补齐并复验 PASS。
+- `TestNativeProtocolMatrix`：14 组实际核心检查 PASS；`TestWireGuardNativeRoundtrip`：原生 endpoint（含 keepalive）检查/导入导出 PASS。
+- Mihomo v1.19.33：`-t -d <temp> -f config.yaml` 对支持协议实际解析 PASS（含 SSH、AnyTLS、WireGuard）。SOCKS4/4a 及不能无损映射的字段明确拒绝。
+- `TestLiveManagedEgress`：静态 HTTP/SOCKS5、真实受控 SSH 服务密码/私钥/加密私钥、HTTP→SSH 链路、完整 sing-box 导出再导入均通过 HTTPS 请求得到 `155.254.105.7`；错误 SSH Host Key 请求失败，没有 Direct 回退。受控 SSH 是实际 SSH 服务与公网请求，不是供应商 SSH 账号验收。
+- `TestLiveRemoteSSH`：连接已配置 VPS 的真实 SSH，私钥 + Host Key + ssh-ed25519 算法钉扎后，HTTPS 公网 IP 为 `38.55.195.102`，PASS。初次只钉扎 ed25519 Host Key、未限制协商算法时服务器选择 ECDSA，正确报 Host Key mismatch；未通过跳过验证绕开，已明确配置匹配算法后通过。
+- 本地完整运行面板的节点检测：`QA-HTTP / NodeID=1 / 155.254.105.7 / AS38136 / HK / Hong Kong / ippure.com`，首次耗时 1086ms。16 项检测均关联 NodeID=1、IP=155.254.105.7；该结果不是 VPS 的 38.55.195.102。
+- 实测结果：Netflix、Disney、Prime、YouTube Premium、DAZN、iQiyi、Claude、ChatGPT 等探测返回可用；Gemini、Steam、TVBAnywhere、Wikipedia 返回不可用，Bing 受限。仅记录本次现有探测器返回值，不把所有平台写为 PASS。
+- QA-Unreachable（127.0.0.1:9）：IP 接口返回 500、无 data，节点历史中没有服务器默认 IP，PASS。
+- QA-Session：会话 ID 轮换、有效期、连接刷新、前后实际 IP 查询 PASS；前后都是 155.254.105.7，正确显示“实际 IP 未变化”。
+- QA-API：受控本地 HTTP API 返回 JSON 网关映射后应用并查询实际出口，PASS；前后 IP 相同，不作为真实供应商换 IP 证明。
+
+### 构建中发现的真实问题及处理
+
+- 初次 Actions 41591280074 因 AnyTLS 扩展会话字段不能放入通用 URI 的测试预期错误失败；保留导出拒绝语义，修正测试为基础兼容字段后通过，未生成假 URI。
+- Actions 41592461206：双架构构建、固定上游核心校验与 Go 测试成功（源码 d58280b），该次为无标签构建，不是最终 Release。
+- 早期在 1GB VPS 上的验证构建导致资源紧张及 `/tmp` 链接空间不足，没有用于替换线上二进制。随后转移本机/CI。SSH 在约 14:27–15:04 期间握手超时，本机和 GitHub runner 都失败；恢复后确认无构建进程，slinx ef.3、sing-box 与 SSH 服务正常。未重启主机或结束无关服务。
+- 临时 GitHub SSH 检查工作流与临时仓库密钥仅用于排查，结束后清理；不保留新的部署授权体系。

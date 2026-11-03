@@ -33,7 +33,7 @@ jobs:
           .ci/sing-box version
       - name: Tests and compilation using upstream builder
         run: |
-          docker run --rm -v "$PWD:/app" -v "$HOME/go/pkg/mod:/root/go/pkg/mod" -v "$HOME/.cache/go-build:/root/.cache/go-build" -e EF_CORE_PATH=/app/.ci/sing-box slinx-builder sh -c 'gofmt -w main.go internal/api/endpoint.go internal/core/config.go internal/core/isp_test.go internal/database/models.go internal/update/update.go; go test ./...'
+          docker run --rm -v "$PWD:/app" -v "$HOME/go/pkg/mod:/root/go/pkg/mod" -v "$HOME/.cache/go-build:/root/.cache/go-build" -e EF_CORE_PATH=/app/.ci/sing-box slinx-builder sh -c 'go test ./...'
           make slinx-amd64 slinx-arm64 VERSION=${GITHUB_REF_NAME}
           test "$(dist/slinx_linux_amd64 version)" = "SLINX-EF $GITHUB_REF_NAME $GITHUB_SHA"
           sudo chown -R "$(id -u):$(id -g)" dist

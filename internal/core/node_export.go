@@ -87,7 +87,7 @@ func ExportNodes(nodes []database.Endpoint, tags []string, format string) (strin
 	proxies := []any{}
 	for _, raw := range eps {
 		e := raw.(endpoints)
-		if e.Workers != 0 || e.UDPTimeout != "" {
+		if e.Workers != 0 || e.UDPTimeout != "" || e.System || e.Name != "" || e.ListenPort != 0 {
 			return "", fmt.Errorf("Mihomo 不支持 WireGuard workers/udp_timeout 转换")
 		}
 		if len(e.Peers) != 1 {
@@ -95,6 +95,12 @@ func ExportNodes(nodes []database.Endpoint, tags []string, format string) (strin
 		}
 		peer := e.Peers[0]
 		p := map[string]any{"type": "wireguard", "name": e.Tag, "server": peer.Address, "port": peer.Port, "private-key": e.PrivateKey, "public-key": peer.PublicKey, "allowed-ips": peer.AllowedIPs, "reserved": peer.Reserved, "mtu": e.MTU, "udp": true}
+		if peer.PreSharedKey != "" {
+			p["pre-shared-key"] = peer.PreSharedKey
+		}
+		if peer.PersistentKeepaliveInterval != 0 {
+			p["persistent-keepalive"] = peer.PersistentKeepaliveInterval
+		}
 		if e.Detour != "" {
 			p["dialer-proxy"] = e.Detour
 		}
@@ -293,6 +299,15 @@ func surgeNode(o map[string]any) (string, error) {
 			return "", fmt.Errorf("Surge 字段 %s 包含不能安全转换的字符", k)
 		}
 	}
+	if tls, ok := o["tls"].(map[string]any); ok && tls["enabled"] == true && typ == "http" {
+		typ = "https"
+	}
+	if typ == "trojan" {
+		tls, _ := o["tls"].(map[string]any)
+		if tls["enabled"] != true {
+			return "", fmt.Errorf("Surge Trojan 需要 TLS")
+		}
+	}
 	parts := []string{fmt.Sprint(o["tag"]) + " = " + typ, fmt.Sprint(o["server"]), fmt.Sprint(o["server_port"])}
 	for _, k := range []string{"username", "password", "detour", "method"} {
 		if v, ok := o[k]; ok {
@@ -310,9 +325,7 @@ func surgeNode(o map[string]any) (string, error) {
 		if err := rejectFields(t, "enabled server_name insecure"); err != nil {
 			return "", err
 		}
-		if t["enabled"] == true {
-			parts = append(parts, "tls=true")
-		}
+
 		if v, ok := t["server_name"]; ok {
 			if strings.ContainsAny(fmt.Sprint(v), ",\r\n") {
 				return "", fmt.Errorf("SNI 无法转换")
@@ -374,6 +387,13 @@ func nodeURI(o map[string]any) (string, error) {
 			}
 			v["sni"] = t["server_name"]
 			v["allowInsecure"] = t["insecure"]
+			if a, ok := t["alpn"].([]any); ok {
+				values := []string{}
+				for _, x := range a {
+					values = append(values, fmt.Sprint(x))
+				}
+				v["alpn"] = strings.Join(values, ",")
+			}
 		}
 		if t, ok := o["transport"].(map[string]any); ok {
 			if t["type"] != "ws" {
@@ -508,7 +528,7 @@ func importOutbound(o map[string]any) (database.Endpoint, error) {
 	n.Tag, _ = o["tag"].(string)
 	n.Detour, _ = o["detour"].(string)
 	if n.Type == "wireguard" {
-		if err := rejectFields(o, "type tag detour mtu address private_key peers udp_timeout workers"); err != nil {
+		if err := rejectFields(o, "type tag detour mtu address private_key peers udp_timeout workers system name listen_port"); err != nil {
 			return n, err
 		}
 		if peers, ok := o["peers"].([]any); ok {
@@ -517,7 +537,7 @@ func importOutbound(o map[string]any) (database.Endpoint, error) {
 				if !ok {
 					return n, fmt.Errorf("WireGuard peer 必须为对象")
 				}
-				if err := rejectFields(peer, "address port public_key allowed_ips reserved"); err != nil {
+				if err := rejectFields(peer, "address port public_key allowed_ips reserved pre_shared_key persistent_keepalive_interval"); err != nil {
 					return n, err
 				}
 			}
@@ -530,6 +550,24 @@ func importOutbound(o map[string]any) (database.Endpoint, error) {
 		if len(e.Peers) != 1 {
 			return n, fmt.Errorf("WireGuard 导入需要单 peer")
 		}
+		options := map[string]any{}
+		if e.System {
+			options["system"] = true
+		}
+		if e.Name != "" {
+			options["name"] = e.Name
+		}
+		if e.ListenPort != 0 {
+			options["listen_port"] = e.ListenPort
+		}
+		if e.Peers[0].PreSharedKey != "" {
+			options["pre_shared_key"] = e.Peers[0].PreSharedKey
+		}
+		if e.Peers[0].PersistentKeepaliveInterval != 0 {
+			options["persistent_keepalive_interval"] = e.Peers[0].PersistentKeepaliveInterval
+		}
+		optionData, _ := json.Marshal(options)
+		n.Options = string(optionData)
 		n.MTU = e.MTU
 		n.PrivateKey = e.PrivateKey
 		n.Workers = e.Workers
@@ -645,6 +683,9 @@ func parseNodeURI(line string) (map[string]any, error) {
 	if q.Get("encryption") != "" && q.Get("encryption") != "none" {
 		return nil, fmt.Errorf("不支持此 VLESS encryption")
 	}
+	if security := q.Get("security"); security != "" && security != "none" && security != "tls" && security != "reality" {
+		return nil, fmt.Errorf("不支持的 URI security: %s", security)
+	}
 	tlsEnabled := q.Get("security") == "tls" || q.Get("security") == "reality" || u.Scheme == "https" || typ == "trojan" || typ == "hysteria2" || typ == "tuic" || typ == "anytls"
 	if tlsEnabled {
 		t := map[string]any{"enabled": true}
@@ -719,6 +760,12 @@ func parseVMessURI(raw string) (map[string]any, error) {
 		tag = "vmess-" + fmt.Sprint(v["add"])
 	}
 	o := map[string]any{"type": "vmess", "tag": tag, "server": v["add"], "server_port": port, "uuid": v["id"], "security": sec, "alter_id": aid}
+	if v["type"] != nil && v["type"] != "" && v["type"] != "none" {
+		return nil, fmt.Errorf("VMess URI 不支持伪装 header type")
+	}
+	if v["tls"] != nil && v["tls"] != "" && v["tls"] != "tls" {
+		return nil, fmt.Errorf("不支持的 VMess TLS 模式")
+	}
 	if v["tls"] == "tls" {
 		t := map[string]any{"enabled": true}
 		if s, ok := v["sni"].(string); ok && s != "" {
@@ -726,6 +773,12 @@ func parseVMessURI(raw string) (map[string]any, error) {
 		}
 		if v["allowInsecure"] == true || v["allowInsecure"] == "1" {
 			t["insecure"] = true
+		}
+		if alpn, ok := v["alpn"].(string); ok && alpn != "" {
+			t["alpn"] = strings.Split(alpn, ",")
+		}
+		if fingerprint, ok := v["fp"].(string); ok && fingerprint != "" {
+			t["utls"] = map[string]any{"enabled": true, "fingerprint": fingerprint}
 		}
 		o["tls"] = t
 	}

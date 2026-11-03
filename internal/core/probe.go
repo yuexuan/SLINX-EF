@@ -24,7 +24,9 @@ func ProbeClient(cfg map[string]any) (*http.Client, func(), error) {
 	port := listener.Addr().(*net.TCPAddr).Port
 	listener.Close()
 	cfg["inbounds"] = []any{map[string]any{"type": "http", "tag": "probe", "listen": "127.0.0.1", "listen_port": port}}
-	cfg["log"] = map[string]any{"disabled": true}
+	if cfg["log"] == nil {
+		cfg["log"] = map[string]any{"disabled": true}
+	}
 	dir, err := os.MkdirTemp("", "slinx-probe-")
 	if err != nil {
 		return nil, nil, err

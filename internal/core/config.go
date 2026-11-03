@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -117,17 +118,10 @@ type user struct {
 	Flow     string `json:"flow,omitempty"`
 }
 
-type outbounds struct {
-	Server     string `json:"server,omitempty"`
-	ServerPort int    `json:"server_port,omitempty"`
-	Username   string `json:"username,omitempty"`
-	Password   string `json:"password,omitempty"`
-	Version    string `json:"version,omitempty"`
-	Type       string `json:"type"`
-	Tag        string `json:"tag"`
-}
-
 type endpoints struct {
+	System     bool           `json:"system,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	ListenPort int            `json:"listen_port,omitempty"`
 	Detour     string         `json:"detour,omitempty"`
 	Type       string         `json:"type"`
 	Tag        string         `json:"tag"`
@@ -140,11 +134,13 @@ type endpoints struct {
 }
 
 type endpointPeer struct {
-	Address    string   `json:"address"`
-	Port       int      `json:"port"`
-	PublicKey  string   `json:"public_key"`
-	AllowedIPs []string `json:"allowed_ips,omitempty"`
-	Reserved   []int    `json:"reserved,omitempty"`
+	PreSharedKey                string   `json:"pre_shared_key,omitempty"`
+	PersistentKeepaliveInterval int      `json:"persistent_keepalive_interval,omitempty"`
+	Address                     string   `json:"address"`
+	Port                        int      `json:"port"`
+	PublicKey                   string   `json:"public_key"`
+	AllowedIPs                  []string `json:"allowed_ips,omitempty"`
+	Reserved                    []int    `json:"reserved,omitempty"`
 }
 
 type route struct {
@@ -570,6 +566,20 @@ func buildEndpoint(ep database.Endpoint) (endpoints, error) {
 }
 
 func buildWireguardEndpoint(ep database.Endpoint) (endpoints, error) {
+	var options struct {
+		System       bool   `json:"system"`
+		Name         string `json:"name"`
+		ListenPort   int    `json:"listen_port"`
+		PreSharedKey string `json:"pre_shared_key"`
+		Keepalive    int    `json:"persistent_keepalive_interval"`
+	}
+	if ep.Options != "" {
+		decoder := json.NewDecoder(bytes.NewBufferString(ep.Options))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&options); err != nil {
+			return endpoints{}, fmt.Errorf("WireGuard Options: %w", err)
+		}
+	}
 	var address []string
 	json.Unmarshal([]byte(ep.Address), &address)
 
@@ -587,6 +597,7 @@ func buildWireguardEndpoint(ep database.Endpoint) (endpoints, error) {
 	}
 
 	ec := endpoints{
+		System: options.System, Name: options.Name, ListenPort: options.ListenPort,
 		Detour:     ep.Detour,
 		Type:       "wireguard",
 		Tag:        ep.Tag,
@@ -595,6 +606,7 @@ func buildWireguardEndpoint(ep database.Endpoint) (endpoints, error) {
 		PrivateKey: ep.PrivateKey,
 		Peers: []endpointPeer{
 			{
+				PreSharedKey: options.PreSharedKey, PersistentKeepaliveInterval: options.Keepalive,
 				Address:    ep.PeerAddress,
 				Port:       ep.PeerPort,
 				PublicKey:  ep.PeerPublicKey,
