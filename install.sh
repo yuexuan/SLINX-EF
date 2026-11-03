@@ -7,7 +7,7 @@ DIR=/etc/slinx
 command -v systemctl >/dev/null || { echo 'systemd required'; exit 1; }
 case $(uname -m) in x86_64) ARCH=amd64; CORE_SHA=bae152039a7728f8afad50b4c7e0c58fe84e40d1236329041eade0c4897c4235;; aarch64|arm64) ARCH=arm64; CORE_SHA=ddb236bd6a6bce2c538229f70f910812a09d01560577b89b23e66bad05479468;; *) exit 1;; esac
 . /etc/os-release
-case "$ID" in debian|ubuntu) apt-get update; apt-get install -y curl ca-certificates gzip sqlite3;; rocky|almalinux|fedora|centos|rhel) dnf install -y curl ca-certificates gzip sqlite;; *) echo "Unsupported distribution: $ID"; exit 1;; esac
+case "$ID" in debian|ubuntu) apt-get update; apt-get install -y curl ca-certificates gzip sqlite3 util-linux;; rocky|almalinux|fedora|centos|rhel) dnf install -y curl ca-certificates gzip sqlite util-linux;; *) echo "Unsupported distribution: $ID"; exit 1;; esac
 mkdir -p /run/lock
 exec 9>/run/lock/slinx-ef-install.lock
 flock -n 9 || { echo 'Another update is running'; exit 1; }
@@ -30,6 +30,7 @@ BACKUP="$DIR/backups/$(date -u +%Y%m%dT%H%M%SZ)-$$"
 mkdir -p "$BACKUP" "$DIR/bin" "$DIR/data" "$DIR/cert"
 HAD_OLD=0
 [[ ! -f "$DIR/slinx" ]] || HAD_OLD=1
+trap 'if [[ $HAD_OLD == 1 ]]; then systemctl start slinx.service; fi' ERR
 systemctl stop slinx.service 2>/dev/null || true
 for item in slinx bin data cert .slinx-ef; do [[ ! -e "$DIR/$item" ]] || cp -a "$DIR/$item" "$BACKUP/"; done
 [[ ! -f /etc/systemd/system/slinx.service ]] || cp -a /etc/systemd/system/slinx.service "$BACKUP/service"
